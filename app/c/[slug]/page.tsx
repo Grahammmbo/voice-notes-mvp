@@ -157,15 +157,15 @@ export default function CardPage({ params }: CardPageProps) {
           Code: {slug}
         </p>
 
-        {step === "intro" && (
+        {step === "intro" && !audioUrl && (
           <>
             <h1 className="text-3xl font-semibold">
-              Leave a message they can hear 💛
-            </h1>
+  Leave a message they can hear 💛
+</h1>
 
-            <p className="text-gray-500">
-              Record a voice message for this gift
-            </p>
+<p className="text-gray-500">
+  Record a voice message they’ll hear when they scan this
+</p>
 
             <button
               onClick={() => setStep("recording")}
@@ -243,11 +243,11 @@ export default function CardPage({ params }: CardPageProps) {
 
         {step === "success" && (
           <>
-            <h1 className="text-3xl font-semibold">Your message is ready 💛</h1>
+            <h1 className="text-3xl font-semibold">It’s ready 💛</h1>
 
-            <p className="text-gray-500">
-              They’ll hear it when they scan the code
-            </p>
+<p className="text-gray-500">
+  When they scan this, they’ll hear your voice
+</p>
 
             <button
               onClick={() => setStep("playback")}
@@ -261,10 +261,10 @@ export default function CardPage({ params }: CardPageProps) {
         {step === "playback" && (
           <>
             <h1 className="text-3xl font-semibold">
-              Someone left you a message 💛
-            </h1>
+  A message is waiting for you 💛
+</h1>
 
-            <p className="text-gray-500">Tap below to listen</p>
+<p className="text-gray-500">Press play to hear it</p>
 
             {audioUrl && (
               <audio controls className="w-full">
