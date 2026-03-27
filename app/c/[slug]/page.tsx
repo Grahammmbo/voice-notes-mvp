@@ -3,12 +3,24 @@
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
-type Step = "loading" | "intro" | "recording" | "review" | "success" | "playback";
+type Step =
+  | "loading"
+  | "intro"
+  | "recording"
+  | "review"
+  | "success"
+  | "playback";
 
 type CardPageProps = {
   params: Promise<{
     slug: string;
   }>;
+};
+
+type ExistingMessage = {
+  audio_url: string;
+  sender_name: string | null;
+  note: string | null;
 };
 
 export default function CardPage({ params }: CardPageProps) {
@@ -18,6 +30,12 @@ export default function CardPage({ params }: CardPageProps) {
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+
+  const [senderName, setSenderName] = useState("");
+  const [note, setNote] = useState("");
+
+  const [savedSenderName, setSavedSenderName] = useState<string | null>(null);
+  const [savedNote, setSavedNote] = useState<string | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
@@ -37,11 +55,11 @@ export default function CardPage({ params }: CardPageProps) {
     const checkForExistingMessage = async () => {
       const { data, error } = await supabase
         .from("messages")
-        .select("audio_url")
+        .select("audio_url, sender_name, note")
         .eq("slug", slug)
         .order("created_at", { ascending: false })
         .limit(1)
-        .maybeSingle();
+        .maybeSingle<ExistingMessage>();
 
       if (error) {
         console.error("Error checking message:", error);
@@ -51,6 +69,8 @@ export default function CardPage({ params }: CardPageProps) {
 
       if (data?.audio_url) {
         setAudioUrl(data.audio_url);
+        setSavedSenderName(data.sender_name ?? null);
+        setSavedNote(data.note ?? null);
         setStep("playback");
       } else {
         setStep("intro");
@@ -113,30 +133,29 @@ export default function CardPage({ params }: CardPageProps) {
           contentType: "audio/webm",
         });
 
-      if (uploadError) {
-        throw uploadError;
-      }
+      if (uploadError) throw uploadError;
 
-      const { data: publicUrlData } = supabase.storage
-        .from("messages")
-        .getPublicUrl(fileName);
+      const { data } = supabase.storage.from("messages").getPublicUrl(fileName);
 
-      const publicUrl = publicUrlData.publicUrl;
+      const cleanedName = senderName.trim();
+      const cleanedNote = note.trim();
 
       const { error: insertError } = await supabase.from("messages").insert({
         slug,
-        audio_url: publicUrl,
+        audio_url: data.publicUrl,
+        sender_name: cleanedName || null,
+        note: cleanedNote || null,
       });
 
-      if (insertError) {
-        throw insertError;
-      }
+      if (insertError) throw insertError;
 
-      setAudioUrl(publicUrl);
+      setSavedSenderName(cleanedName || null);
+      setSavedNote(cleanedNote || null);
+      setAudioUrl(data.publicUrl);
       setStep("success");
-    } catch (error) {
-      console.error("Save error:", error);
-      alert("There was a problem saving your message.");
+    } catch (err) {
+      console.error("Save error:", err);
+      alert("Error saving message");
     } finally {
       setIsSaving(false);
     }
@@ -144,136 +163,176 @@ export default function CardPage({ params }: CardPageProps) {
 
   if (step === "loading") {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-white px-6">
-        <p className="text-gray-500">Loading...</p>
+      <main className="flex min-h-screen items-center justify-center bg-gray-50 px-6">
+        <div className="space-y-3 text-center">
+          <div className="mx-auto h-10 w-10 animate-pulse rounded-full bg-gray-300" />
+          <p className="text-gray-700">Loading your message...</p>
+        </div>
       </main>
     );
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-white px-6">
-      <div className="w-full max-w-md text-center space-y-6">
-        <p className="text-sm uppercase tracking-wide text-gray-400">
-          Code: {slug}
-        </p>
+    <main className="min-h-screen bg-gray-50 px-6 py-10">
+      <div className="mx-auto max-w-md space-y-8">
+        <div className="text-center">
+          <p className="text-xs tracking-widest text-gray-500">EchoNote</p>
+        </div>
 
-        {step === "intro" && !audioUrl && (
-          <>
-            <h1 className="text-3xl font-semibold">
-  Leave a message they can hear 💛
-</h1>
-
-<p className="text-gray-500">
-  Record a voice message they’ll hear when they scan this
-</p>
-
-            <button
-              onClick={() => setStep("recording")}
-              className="w-full rounded-xl bg-black px-6 py-3 text-lg text-white"
-            >
-              🎙️ Record message
-            </button>
-          </>
-        )}
-
-        {step === "recording" && (
-          <>
-            <h1 className="text-3xl font-semibold">Record your message</h1>
-
-            <p className="text-gray-500">
-              Tap below to start and stop recording
+        <div className="space-y-6 rounded-3xl border border-gray-200 bg-white p-6 shadow-sm">
+          <div className="text-center">
+            <p className="text-xs uppercase tracking-wide text-gray-500">
+              Code: {slug}
             </p>
+          </div>
 
-            <button
-              onClick={isRecording ? stopRecording : startRecording}
-              className="w-full rounded-xl bg-black px-6 py-3 text-lg text-white"
-            >
-              {isRecording ? "⏹ Stop recording" : "🎙️ Start recording"}
-            </button>
+          {step === "intro" && (
+            <>
+              <h1 className="text-center text-2xl font-semibold text-gray-900">
+                Leave a message
+              </h1>
 
-            <button
-              onClick={() => setStep("review")}
-              disabled={!audioUrl}
-              className={`w-full rounded-xl px-6 py-3 text-lg transition ${
-                audioUrl
-                  ? "bg-black text-white"
-                  : "border border-gray-300 text-gray-400 cursor-not-allowed"
-              }`}
-            >
-              Continue
-            </button>
-          </>
-        )}
+              <input
+                placeholder="Your name (optional)"
+                value={senderName}
+                onChange={(e) => setSenderName(e.target.value)}
+                className="w-full rounded-2xl border border-gray-300 p-3 text-gray-900 placeholder:text-gray-500"
+              />
 
-        {step === "review" && (
-          <>
-            <h1 className="text-3xl font-semibold">Review your message</h1>
+              <input
+                placeholder="Add a short note (optional)"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                className="w-full rounded-2xl border border-gray-300 p-3 text-gray-900 placeholder:text-gray-500"
+              />
 
-            <p className="text-gray-500">Play it back before saving</p>
+              <button
+                onClick={() => setStep("recording")}
+                className="w-full rounded-2xl bg-black p-3 text-white"
+              >
+                Record message
+              </button>
+            </>
+          )}
 
-            {audioUrl && (
-              <audio controls className="w-full">
-                <source src={audioUrl} type="audio/webm" />
-                Your browser does not support audio playback.
-              </audio>
-            )}
+          {step === "recording" && (
+            <>
+              <h1 className="text-center text-2xl font-semibold text-gray-900">
+                Recording
+              </h1>
 
-            <button
-              onClick={saveMessage}
-              disabled={isSaving}
-              className={`w-full rounded-xl px-6 py-3 text-lg text-white transition ${
-                isSaving ? "bg-gray-400 cursor-not-allowed" : "bg-black"
-              }`}
-            >
-              {isSaving ? "Saving..." : "Save message"}
-            </button>
+              {senderName && (
+                <p className="text-center text-xl font-semibold text-gray-900">
+                  From {senderName}
+                </p>
+              )}
 
-            <button
-              onClick={() => {
-                setAudioUrl(null);
-                setAudioBlob(null);
-                setStep("recording");
-              }}
-              className="w-full rounded-xl bg-gray-100 px-6 py-3 text-lg text-black transition hover:bg-gray-200"
-            >
-              Re-record
-            </button>
-          </>
-        )}
+              {note && (
+                <p className="text-center italic text-gray-700">
+                  “{note}”
+                </p>
+              )}
 
-        {step === "success" && (
-          <>
-            <h1 className="text-3xl font-semibold">It’s ready 💛</h1>
+              <button
+                onClick={isRecording ? stopRecording : startRecording}
+                className="w-full rounded-2xl bg-black p-3 text-white"
+              >
+                {isRecording ? "Stop" : "Start"}
+              </button>
 
-<p className="text-gray-500">
-  When they scan this, they’ll hear your voice
-</p>
+              <button
+                disabled={!audioUrl}
+                onClick={() => setStep("review")}
+                className={`w-full rounded-2xl p-3 ${
+                  audioUrl
+                    ? "bg-black text-white"
+                    : "border border-gray-300 text-gray-500"
+                }`}
+              >
+                Continue
+              </button>
+            </>
+          )}
 
-            <button
-              onClick={() => setStep("playback")}
-              className="w-full rounded-xl bg-black px-6 py-3 text-lg text-white"
-            >
-              Preview recipient view
-            </button>
-          </>
-        )}
+          {step === "review" && (
+            <>
+              <h1 className="text-center text-2xl font-semibold text-gray-900">
+                Review your message
+              </h1>
 
-        {step === "playback" && (
-          <>
-            <h1 className="text-3xl font-semibold">
-  A message is waiting for you 💛
-</h1>
+              {senderName && (
+                <p className="text-center text-xl font-semibold text-gray-900">
+                  From {senderName}
+                </p>
+              )}
 
-<p className="text-gray-500">Press play to hear it</p>
+              {note && (
+                <p className="text-center italic text-gray-700">
+                  “{note}”
+                </p>
+              )}
 
-            {audioUrl && (
-              <audio controls className="w-full">
-                <source src={audioUrl} type="audio/webm" />
-                Your browser does not support audio playback.
-              </audio>
-            )}
-          </>
-        )}
+              {audioUrl && <audio controls src={audioUrl} className="w-full" />}
+
+              <button
+                onClick={saveMessage}
+                disabled={isSaving}
+                className="w-full rounded-2xl bg-black p-3 text-white"
+              >
+                {isSaving ? "Saving..." : "Save"}
+              </button>
+            </>
+          )}
+
+          {step === "success" && (
+            <>
+              <h1 className="text-center text-2xl font-semibold text-gray-900">
+                Saved
+              </h1>
+
+              {savedSenderName && (
+                <p className="text-center text-xl font-semibold text-gray-900">
+                  From {savedSenderName}
+                </p>
+              )}
+
+              {savedNote && (
+                <p className="text-center italic text-gray-700">
+                  “{savedNote}”
+                </p>
+              )}
+
+              <button
+                onClick={() => setStep("playback")}
+                className="w-full rounded-2xl bg-black p-3 text-white"
+              >
+                Preview
+              </button>
+            </>
+          )}
+
+          {step === "playback" && (
+            <>
+              <h1 className="text-center text-2xl font-semibold text-gray-900">
+                You received a message
+              </h1>
+
+              {savedSenderName && (
+                <p className="text-center text-xl font-semibold text-gray-900">
+                  From {savedSenderName}
+                </p>
+              )}
+
+              {savedNote && (
+                <p className="text-center italic text-gray-700">
+                  “{savedNote}”
+                </p>
+              )}
+
+              {audioUrl && <audio controls src={audioUrl} className="w-full" />}
+            </>
+          )}
+        </div>
       </div>
     </main>
   );
