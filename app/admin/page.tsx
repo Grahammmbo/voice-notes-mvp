@@ -43,10 +43,8 @@ export default function AdminPage() {
                 src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(
                   url
                 )}"
-                alt="${s}"
               />
               <div class="brand">EchoNote</div>
-              <div class="slug">${s}</div>
             </div>
           </div>
         `;
@@ -66,8 +64,8 @@ export default function AdminPage() {
             body {
               font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
               margin: 0;
-              color: #111;
               background: #faf8f4;
+              color: #111;
             }
 
             .sheet {
@@ -83,47 +81,44 @@ export default function AdminPage() {
               font-size: 22px;
               font-weight: 700;
               letter-spacing: -0.02em;
-              margin-bottom: 6px;
             }
 
             .sheet-subtitle {
               font-size: 12px;
-              color: #666;
+              color: #777;
+              margin-top: 4px;
             }
 
             .grid {
               display: grid;
               grid-template-columns: repeat(6, 1in);
               gap: 0.16in;
-              justify-content: start;
             }
 
             .sticker {
               width: 1in;
               height: 1in;
-              box-sizing: border-box;
             }
 
             .sticker-inner {
               width: 1in;
               height: 1in;
-              box-sizing: border-box;
-              border: 1px solid #d8d3cb;
               border-radius: 14px;
+              border: 1px solid #eae6df;
               background: #fffdf9;
+
               display: flex;
               flex-direction: column;
               align-items: center;
               justify-content: center;
-              text-align: center;
+
               padding: 0.05in;
-              box-shadow: inset 0 0 0 1px rgba(255,255,255,0.7);
+              box-sizing: border-box;
             }
 
             .sticker-inner img {
-              width: 0.72in;
-              height: 0.72in;
-              display: block;
+              width: 0.8in;
+              height: 0.8in;
             }
 
             .brand {
@@ -132,33 +127,22 @@ export default function AdminPage() {
               font-weight: 600;
               letter-spacing: 0.03em;
               color: #444;
-              line-height: 1;
-            }
-
-            .slug {
-              margin-top: 2px;
-              font-size: 5.5px;
-              color: #888;
-              line-height: 1;
             }
 
             @media print {
               body {
                 background: white;
               }
-
-              .sticker-inner {
-                box-shadow: none;
-              }
             }
           </style>
         </head>
+
         <body>
           <div class="sheet">
             <div class="sheet-header">
-              <div class="sheet-title">EchoNote Sticker Sheet</div>
+              <div class="sheet-title">EchoNote</div>
               <div class="sheet-subtitle">
-                ${generatedSlugs.length} stickers for base slug: ${slug}
+                Scan to hear a message
               </div>
             </div>
 
@@ -187,7 +171,7 @@ export default function AdminPage() {
         const message = error.message?.toLowerCase() || "";
 
         if (message.includes("duplicate") || message.includes("unique")) {
-          setSaveMessage("Some or all of these slugs already exist in inventory.");
+          setSaveMessage("Some or all of these slugs already exist.");
           setIsSavingBatch(false);
           return;
         }
@@ -197,8 +181,8 @@ export default function AdminPage() {
 
       setSaveMessage("Batch saved to inventory.");
     } catch (error) {
-      console.error("Error saving batch:", error);
-      setSaveMessage("There was a problem saving this batch.");
+      console.error(error);
+      setSaveMessage("Error saving batch.");
     } finally {
       setIsSavingBatch(false);
     }
@@ -208,86 +192,61 @@ export default function AdminPage() {
     <AdminGate>
       <main className="min-h-screen bg-white px-6 py-12">
         <div className="mx-auto max-w-xl space-y-8">
-          <div className="space-y-2 text-center">
+          <div className="text-center space-y-2">
             <h1 className="text-3xl font-semibold">QR Code Generator</h1>
             <p className="text-gray-500">
               Create batches of QR codes for message links
             </p>
           </div>
 
-          <div className="space-y-4 rounded-2xl border border-gray-200 p-6">
-            <label className="block text-sm font-medium text-gray-700">
-              Base slug
-            </label>
+          <div className="space-y-4 border rounded-2xl p-6">
             <input
               value={slug}
               onChange={(e) => setSlug(e.target.value)}
-              placeholder="gift"
-              className="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none focus:border-black"
+              placeholder="base slug"
+              className="w-full border rounded-xl px-4 py-3"
             />
 
-            <label className="block text-sm font-medium text-gray-700">
-              Quantity
-            </label>
             <input
               type="number"
-              min="1"
               value={count}
               onChange={(e) => setCount(Number(e.target.value))}
-              className="w-full rounded-xl border border-gray-300 px-4 py-3 outline-none focus:border-black"
+              className="w-full border rounded-xl px-4 py-3"
             />
 
-            <div className="rounded-xl bg-gray-50 p-4 text-sm break-all text-gray-700">
-              Example single URL: {exampleUrl}
+            <div className="text-sm text-gray-500 break-all">
+              Example: {exampleUrl}
             </div>
           </div>
 
-          <div className="rounded-2xl border border-gray-200 p-6 text-center space-y-6">
-            <div className="space-y-6">
-              <p className="text-sm text-gray-500">
-                {generatedSlugs.length} codes generated
-              </p>
+          <div className="space-y-6 border rounded-2xl p-6 text-center">
+            {generatedSlugs.map((s) => {
+              const url = `${baseUrl}/c/${s}`;
 
-              {generatedSlugs.map((s) => {
-                const url = `${baseUrl}/c/${s}`;
+              return (
+                <div key={s}>
+                  <QRCodeCanvas value={url} size={140} />
+                </div>
+              );
+            })}
 
-                return (
-                  <div key={s} className="text-center space-y-2">
-                    <div className="space-y-1">
-                      <p className="text-sm font-medium text-gray-700">{s}</p>
-                      <p className="text-xs break-all text-gray-500">{url}</p>
-                    </div>
-
-                    <div className="flex justify-center">
-                      <QRCodeCanvas value={url} size={160} includeMargin />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
+            <div className="flex gap-3 justify-center">
               <button
                 onClick={openPrintableSheet}
-                className="rounded-xl bg-black px-6 py-3 text-white"
+                className="bg-black text-white px-6 py-3 rounded-xl"
               >
-                Open printable sheet
+                Printable sheet
               </button>
 
               <button
                 onClick={saveBatchToInventory}
-                disabled={isSavingBatch}
-                className={`rounded-xl px-6 py-3 text-white ${
-                  isSavingBatch ? "bg-gray-400" : "bg-black"
-                }`}
+                className="bg-black text-white px-6 py-3 rounded-xl"
               >
-                {isSavingBatch ? "Saving..." : "Save batch to inventory"}
+                Save batch
               </button>
             </div>
 
-            {saveMessage && (
-              <p className="text-sm text-gray-500">{saveMessage}</p>
-            )}
+            {saveMessage && <p>{saveMessage}</p>}
           </div>
         </div>
       </main>
