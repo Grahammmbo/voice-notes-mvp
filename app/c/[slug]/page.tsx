@@ -32,6 +32,8 @@ export default function MessagePage({
   const [senderName, setSenderName] = useState("");
   const [note, setNote] = useState("");
 
+  const [showPlaybackIntro, setShowPlaybackIntro] = useState(false);
+
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
 
@@ -64,7 +66,12 @@ export default function MessagePage({
       if (data) {
         setExistingMessage(data);
         setAudioUrl(data.audio_url);
-        setStep("playback");
+        setShowPlaybackIntro(true);
+
+        setTimeout(() => {
+          setShowPlaybackIntro(false);
+          setStep("playback");
+        }, 1100);
       } else {
         setStep("intro");
       }
@@ -161,14 +168,14 @@ export default function MessagePage({
     );
   }
 
-  return (
-    <main className="min-h-screen bg-stone-50 px-6 py-10">
-      <div className="mx-auto max-w-md">
+  if (showPlaybackIntro && existingMessage) {
+    return (
+      <main className="flex min-h-screen items-center justify-center bg-stone-50 px-6">
         <style>{`
-          @keyframes echoFadeUp {
+          @keyframes premiumFade {
             0% {
               opacity: 0;
-              transform: translateY(12px) scale(0.98);
+              transform: translateY(14px) scale(0.98);
             }
             100% {
               opacity: 1;
@@ -176,42 +183,82 @@ export default function MessagePage({
             }
           }
 
-          @keyframes echoPulse {
+          @keyframes premiumPulse {
             0%, 100% {
               transform: scale(1);
               box-shadow: 0 0 0 0 rgba(120, 113, 108, 0.12);
             }
             50% {
               transform: scale(1.04);
-              box-shadow: 0 0 0 10px rgba(120, 113, 108, 0);
+              box-shadow: 0 0 0 14px rgba(120, 113, 108, 0);
             }
           }
 
-          @keyframes echoShimmer {
+          .premium-fade {
+            animation: premiumFade 650ms ease-out both;
+          }
+
+          .premium-pulse {
+            animation: premiumPulse 2.2s ease-in-out infinite;
+          }
+        `}</style>
+
+        <div className="premium-fade w-full max-w-md text-center">
+          <div className="space-y-6 rounded-[28px] border border-stone-200 bg-white p-8 shadow-sm">
+            <div className="space-y-3">
+              <p className="text-xs font-medium uppercase tracking-[0.28em] text-stone-400">
+                EchoNote
+              </p>
+            </div>
+
+            <div className="premium-pulse mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-stone-100 text-3xl">
+              💌
+            </div>
+
+            <div className="space-y-3">
+              <p className="text-xs font-medium uppercase tracking-[0.22em] text-stone-400">
+                Opening your message
+              </p>
+
+              <h1 className="text-3xl font-semibold tracking-tight text-stone-900">
+                A message is waiting for you
+              </h1>
+
+              {existingMessage.sender_name && (
+                <p className="text-xl font-semibold text-stone-900">
+                  From {existingMessage.sender_name}
+                </p>
+              )}
+
+              {existingMessage.note && (
+                <p className="mx-auto max-w-xs text-base italic text-stone-600">
+                  “{existingMessage.note}”
+                </p>
+              )}
+            </div>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  return (
+    <main className="min-h-screen bg-stone-50 px-6 py-10">
+      <div className="mx-auto max-w-md">
+        <style>{`
+          @keyframes cardFadeUp {
             0% {
-              opacity: 0.7;
-              transform: translateX(-6px);
-            }
-            50% {
-              opacity: 1;
-              transform: translateX(0);
+              opacity: 0;
+              transform: translateY(10px);
             }
             100% {
-              opacity: 0.7;
-              transform: translateX(6px);
+              opacity: 1;
+              transform: translateY(0);
             }
           }
 
-          .echo-fade-up {
-            animation: echoFadeUp 600ms ease-out both;
-          }
-
-          .echo-pulse {
-            animation: echoPulse 2.4s ease-in-out infinite;
-          }
-
-          .echo-shimmer {
-            animation: echoShimmer 2.8s ease-in-out infinite;
+          .card-fade-up {
+            animation: cardFadeUp 500ms ease-out both;
           }
         `}</style>
 
@@ -389,15 +436,15 @@ export default function MessagePage({
           )}
 
           {step === "playback" && existingMessage && (
-            <div className="echo-fade-up space-y-6">
+            <div className="card-fade-up space-y-6">
               <div className="space-y-5 text-center">
-                <div className="echo-shimmer mx-auto inline-flex rounded-full border border-stone-200 bg-stone-50 px-4 py-2">
+                <div className="mx-auto inline-flex rounded-full border border-stone-200 bg-stone-50 px-4 py-2">
                   <p className="text-[10px] font-medium uppercase tracking-[0.26em] text-stone-500">
                     EchoNote
                   </p>
                 </div>
 
-                <div className="echo-pulse mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-stone-100 text-3xl">
+                <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-stone-100 text-3xl">
                   💌
                 </div>
 
