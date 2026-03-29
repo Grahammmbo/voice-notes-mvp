@@ -38,13 +38,16 @@ export default function AdminPage() {
 
         return `
           <div class="sticker">
-            <img
-              src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(
-                url
-              )}"
-              alt="${s}"
-            />
-            <div class="brand">EchoNote</div>
+            <div class="sticker-inner">
+              <img
+                src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(
+                  url
+                )}"
+                alt="${s}"
+              />
+              <div class="brand">EchoNote</div>
+              <div class="slug">${s}</div>
+            </div>
           </div>
         `;
       })
@@ -61,19 +64,26 @@ export default function AdminPage() {
             }
 
             body {
-              font-family: Arial, sans-serif;
+              font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
               margin: 0;
               color: #111;
+              background: #faf8f4;
+            }
+
+            .sheet {
+              padding: 0.1in 0;
             }
 
             .sheet-header {
-              margin-bottom: 0.25in;
+              text-align: center;
+              margin-bottom: 0.35in;
             }
 
             .sheet-title {
-              font-size: 18px;
-              font-weight: 600;
-              margin-bottom: 4px;
+              font-size: 22px;
+              font-weight: 700;
+              letter-spacing: -0.02em;
+              margin-bottom: 6px;
             }
 
             .sheet-subtitle {
@@ -84,45 +94,77 @@ export default function AdminPage() {
             .grid {
               display: grid;
               grid-template-columns: repeat(6, 1in);
-              gap: 0.15in;
+              gap: 0.16in;
               justify-content: start;
             }
 
             .sticker {
               width: 1in;
               height: 1in;
+              box-sizing: border-box;
+            }
+
+            .sticker-inner {
+              width: 1in;
+              height: 1in;
+              box-sizing: border-box;
+              border: 1px solid #d8d3cb;
+              border-radius: 14px;
+              background: #fffdf9;
               display: flex;
               flex-direction: column;
               align-items: center;
               justify-content: center;
               text-align: center;
-              break-inside: avoid;
+              padding: 0.05in;
+              box-shadow: inset 0 0 0 1px rgba(255,255,255,0.7);
             }
 
-            .sticker img {
-              width: 0.8in;
-              height: 0.8in;
+            .sticker-inner img {
+              width: 0.72in;
+              height: 0.72in;
               display: block;
             }
 
             .brand {
+              margin-top: 0.03in;
               font-size: 7px;
-              color: #666;
-              margin-top: 2px;
+              font-weight: 600;
+              letter-spacing: 0.03em;
+              color: #444;
               line-height: 1;
+            }
+
+            .slug {
+              margin-top: 2px;
+              font-size: 5.5px;
+              color: #888;
+              line-height: 1;
+            }
+
+            @media print {
+              body {
+                background: white;
+              }
+
+              .sticker-inner {
+                box-shadow: none;
+              }
             }
           </style>
         </head>
         <body>
-          <div class="sheet-header">
-            <div class="sheet-title">EchoNote Sticker Sheet</div>
-            <div class="sheet-subtitle">
-              ${generatedSlugs.length} codes for base slug: ${slug}
+          <div class="sheet">
+            <div class="sheet-header">
+              <div class="sheet-title">EchoNote Sticker Sheet</div>
+              <div class="sheet-subtitle">
+                ${generatedSlugs.length} stickers for base slug: ${slug}
+              </div>
             </div>
-          </div>
 
-          <div class="grid">
-            ${qrItemsHtml}
+            <div class="grid">
+              ${qrItemsHtml}
+            </div>
           </div>
         </body>
       </html>
