@@ -164,6 +164,57 @@ export default function MessagePage({
   return (
     <main className="min-h-screen bg-stone-50 px-6 py-10">
       <div className="mx-auto max-w-md">
+        <style>{`
+          @keyframes echoFadeUp {
+            0% {
+              opacity: 0;
+              transform: translateY(12px) scale(0.98);
+            }
+            100% {
+              opacity: 1;
+              transform: translateY(0) scale(1);
+            }
+          }
+
+          @keyframes echoPulse {
+            0%, 100% {
+              transform: scale(1);
+              box-shadow: 0 0 0 0 rgba(120, 113, 108, 0.12);
+            }
+            50% {
+              transform: scale(1.04);
+              box-shadow: 0 0 0 10px rgba(120, 113, 108, 0);
+            }
+          }
+
+          @keyframes echoShimmer {
+            0% {
+              opacity: 0.7;
+              transform: translateX(-6px);
+            }
+            50% {
+              opacity: 1;
+              transform: translateX(0);
+            }
+            100% {
+              opacity: 0.7;
+              transform: translateX(6px);
+            }
+          }
+
+          .echo-fade-up {
+            animation: echoFadeUp 600ms ease-out both;
+          }
+
+          .echo-pulse {
+            animation: echoPulse 2.4s ease-in-out infinite;
+          }
+
+          .echo-shimmer {
+            animation: echoShimmer 2.8s ease-in-out infinite;
+          }
+        `}</style>
+
         <div className="mb-6 text-center">
           <p className="text-xs font-medium uppercase tracking-[0.28em] text-stone-400">
             EchoNote
@@ -338,9 +389,15 @@ export default function MessagePage({
           )}
 
           {step === "playback" && existingMessage && (
-            <div className="space-y-6">
-              <div className="space-y-4 text-center">
-                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-stone-100 text-2xl">
+            <div className="echo-fade-up space-y-6">
+              <div className="space-y-5 text-center">
+                <div className="echo-shimmer mx-auto inline-flex rounded-full border border-stone-200 bg-stone-50 px-4 py-2">
+                  <p className="text-[10px] font-medium uppercase tracking-[0.26em] text-stone-500">
+                    EchoNote
+                  </p>
+                </div>
+
+                <div className="echo-pulse mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-stone-100 text-3xl">
                   💌
                 </div>
 
@@ -360,13 +417,24 @@ export default function MessagePage({
                 )}
 
                 {existingMessage.note && (
-                  <p className="text-base italic text-stone-600">
+                  <p className="mx-auto max-w-xs text-base italic text-stone-600">
                     “{existingMessage.note}”
                   </p>
                 )}
               </div>
 
-              <div className="rounded-2xl border border-stone-200 bg-stone-50 p-4">
+              <div className="rounded-3xl border border-stone-200 bg-stone-50 p-4 shadow-[0_1px_0_rgba(0,0,0,0.02)]">
+                <div className="mb-3 flex items-center justify-between">
+                  <p className="text-sm font-medium text-stone-700">
+                    Voice message
+                  </p>
+                  <div className="flex gap-1.5">
+                    <span className="h-1.5 w-1.5 rounded-full bg-stone-300" />
+                    <span className="h-1.5 w-1.5 rounded-full bg-stone-300" />
+                    <span className="h-1.5 w-1.5 rounded-full bg-stone-300" />
+                  </div>
+                </div>
+
                 <audio
                   controls
                   src={existingMessage.audio_url}
@@ -375,7 +443,7 @@ export default function MessagePage({
               </div>
 
               <p className="text-center text-xs uppercase tracking-[0.22em] text-stone-400">
-                EchoNote
+                Sent with EchoNote
               </p>
             </div>
           )}
