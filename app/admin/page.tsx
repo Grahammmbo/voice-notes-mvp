@@ -35,15 +35,16 @@ export default function AdminPage() {
     const qrItemsHtml = generatedSlugs
       .map((s) => {
         const url = `${baseUrl}/c/${s}`;
+
         return `
-          <div class="sticker-cell">
+          <div class="sticker">
             <img
-              src="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(
+              src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(
                 url
               )}"
               alt="${s}"
             />
-            <div class="slug">${s}</div>
+            <div class="brand">EchoNote</div>
           </div>
         `;
       })
@@ -52,7 +53,7 @@ export default function AdminPage() {
     printWindow.document.write(`
       <html>
         <head>
-          <title>Sticker Sheet - ${slug}</title>
+          <title>EchoNote Stickers</title>
           <style>
             @page {
               size: letter;
@@ -87,36 +88,42 @@ export default function AdminPage() {
               justify-content: start;
             }
 
-            .sticker-cell {
+            .sticker {
               width: 1in;
+              height: 1in;
+              display: flex;
+              flex-direction: column;
+              align-items: center;
+              justify-content: center;
               text-align: center;
               break-inside: avoid;
             }
 
-            .sticker-cell img {
-              width: 1in;
-              height: 1in;
+            .sticker img {
+              width: 0.8in;
+              height: 0.8in;
               display: block;
             }
 
-            .slug {
-              margin-top: 4px;
-              font-size: 8px;
+            .brand {
+              font-size: 7px;
               color: #666;
-              word-break: break-all;
-              line-height: 1.1;
+              margin-top: 2px;
+              line-height: 1;
             }
           </style>
         </head>
         <body>
           <div class="sheet-header">
-            <div class="sheet-title">QR Sticker Sheet</div>
+            <div class="sheet-title">EchoNote Sticker Sheet</div>
             <div class="sheet-subtitle">
               ${generatedSlugs.length} codes for base slug: ${slug}
             </div>
           </div>
 
-          <div class="grid">${qrItemsHtml}</div>
+          <div class="grid">
+            ${qrItemsHtml}
+          </div>
         </body>
       </html>
     `);
