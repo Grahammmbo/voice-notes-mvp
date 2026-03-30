@@ -48,7 +48,9 @@ export default function MessagePage({
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const playbackAudioRef = useRef<HTMLAudioElement | null>(null);
-  const recordingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const recordingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
+    null,
+  );
 
   const [audioReady, setAudioReady] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -90,6 +92,7 @@ export default function MessagePage({
         setAudioReady(false);
         setCurrentTime(0);
         setDuration(0);
+        setPlaybackError(null);
         setStep("preplay");
       } else {
         setStep("intro");
@@ -154,7 +157,8 @@ export default function MessagePage({
       if (recordingIntervalRef.current) {
         clearInterval(recordingIntervalRef.current);
       }
-      if (audioUrl && !existingMessage) {
+
+      if (audioUrl && !existingMessage && audioUrl.startsWith("blob:")) {
         URL.revokeObjectURL(audioUrl);
       }
     };
@@ -173,7 +177,7 @@ export default function MessagePage({
         recordingIntervalRef.current = null;
       }
 
-      if (audioUrl && !existingMessage) {
+      if (audioUrl && !existingMessage && audioUrl.startsWith("blob:")) {
         URL.revokeObjectURL(audioUrl);
         setAudioUrl(null);
       }
@@ -202,16 +206,20 @@ export default function MessagePage({
 
         const blob = new Blob(chunksRef.current, { type: "audio/webm" });
         const localUrl = URL.createObjectURL(blob);
+
         setAudioBlob(blob);
         setAudioUrl(localUrl);
         setStep("review");
+
         stream.getTracks().forEach((track) => track.stop());
       };
 
       mediaRecorder.start();
+
       recordingIntervalRef.current = setInterval(() => {
         setRecordingElapsed((prev) => prev + 1);
       }, 1000);
+
       setStep("recording");
     } catch (error) {
       console.error("Mic error:", error);
@@ -261,6 +269,7 @@ export default function MessagePage({
       setCurrentTime(0);
       setDuration(0);
       setAudioReady(false);
+      setPlaybackError(null);
       setStep("success");
     } catch (error) {
       console.error("Save error:", error);
@@ -279,6 +288,7 @@ export default function MessagePage({
         audio.currentTime = 0;
         setCurrentTime(0);
       }
+
       await audio.play();
     } catch (error) {
       console.error("Playback failed:", error);
@@ -308,6 +318,7 @@ export default function MessagePage({
   const handleReplay = () => {
     const audio = playbackAudioRef.current;
     if (!audio) return;
+
     triggerHaptic();
     audio.pause();
     audio.currentTime = 0;
@@ -331,7 +342,8 @@ export default function MessagePage({
   }, [existingMessage?.sender_name]);
 
   const noteLabel = existingMessage?.note?.trim();
-  const progress = duration > 0 ? Math.min((currentTime / duration) * 100, 100) : 0;
+  const progress =
+    duration > 0 ? Math.min((currentTime / duration) * 100, 100) : 0;
 
   if (step === "loading") {
     return (
@@ -374,181 +386,198 @@ export default function MessagePage({
               EchoNote
             </div>
 
-            {(step === "preplay" || step === "playing" || step === "ended") && existingMessage && (
-              <>
-                {step === "preplay" && (
-                  <div className="flex flex-1 flex-col items-center justify-center text-center">
-                    <p className="mb-4 text-[12px] font-semibold uppercase tracking-[0.14em] text-[#181411]/45">
-                      A moment is waiting
-                    </p>
+            {(step === "preplay" || step === "playing" || step === "ended") &&
+              existingMessage && (
+                <>
+                  {step === "preplay" && (
+                    <div className="flex flex-1 flex-col items-center justify-center text-center">
+                      <p className="mb-4 text-[12px] font-semibold uppercase tracking-[0.14em] text-[#181411]/45">
+                        A moment is waiting
+                      </p>
 
-                    <h1 className="max-w-[290px] text-[32px] font-semibold leading-[1.05] tracking-[-0.04em] sm:text-[34px]">
-                      A voice note is waiting for you
-                    </h1>
+                      <h1 className="max-w-[290px] text-[32px] font-semibold leading-[1.05] tracking-[-0.04em] sm:text-[34px]">
+                        A voice note is waiting for you
+                      </h1>
 
-                    <p className="mt-3 text-[15px] tracking-[-0.01em] text-[#6f655e]">
-                      From {senderLabel}
-                    </p>
+                      <p className="mt-3 text-[15px] tracking-[-0.01em] text-[#6f655e]">
+                        From {senderLabel}
+                      </p>
 
-                    {noteLabel ? (
-                      <div className="mt-5 max-w-[300px] rounded-[22px] border border-white/80 bg-white/60 px-5 py-4 text-[14px] italic leading-[1.5] text-[#5f564f] shadow-[0_12px_30px_rgba(58,42,27,0.08)] backdrop-blur-md">
-                        “{noteLabel}”
+                      {noteLabel ? (
+                        <div className="mt-5 max-w-[300px] rounded-[22px] border border-white/80 bg-white/60 px-5 py-4 text-[14px] italic leading-[1.5] text-[#5f564f] shadow-[0_12px_30px_rgba(58,42,27,0.08)] backdrop-blur-md">
+                          “{noteLabel}”
+                        </div>
+                      ) : null}
+
+                      <div className="mt-10 flex flex-col items-center gap-4">
+                        <div className="relative grid h-[154px] w-[154px] place-items-center rounded-full bg-[radial-gradient(circle_at_30%_30%,rgba(255,255,255,0.94),rgba(255,255,255,0.38))] shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_24px_50px_rgba(90,66,45,0.12)] motion-safe:animate-[pulse_3s_ease-in-out_infinite]">
+                          <div className="absolute inset-[10px] rounded-full border border-[#181411]/5" />
+                          <button
+                            type="button"
+                            onClick={handlePlay}
+                            disabled={!existingMessage.audio_url}
+                            className="relative grid h-28 w-28 place-items-center rounded-full bg-gradient-to-b from-[#26201b] to-[#15110f] text-white shadow-[0_18px_30px_rgba(21,17,15,0.24),inset_0_1px_0_rgba(255,255,255,0.12)] transition duration-150 hover:brightness-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+                            aria-label="Play message"
+                          >
+                            <span className="ml-1 inline-block h-0 w-0 border-b-[14px] border-l-[22px] border-t-[14px] border-b-transparent border-l-white border-t-transparent" />
+                          </button>
+                        </div>
+
+                        <div className="text-[15px] font-semibold tracking-[-0.01em]">
+                          {audioReady || !existingMessage.audio_url
+                            ? "Play message"
+                            : "Preparing audio..."}
+                        </div>
+                        <div className="text-[12px] text-[#181411]/45">
+                          No app required
+                        </div>
+                        {playbackError ? (
+                          <p className="max-w-[240px] text-center text-[12px] text-red-600">
+                            {playbackError}
+                          </p>
+                        ) : null}
                       </div>
-                    ) : null}
+                    </div>
+                  )}
 
-                    <div className="mt-10 flex flex-col items-center gap-4">
-                      <div className="relative grid h-[154px] w-[154px] place-items-center rounded-full bg-[radial-gradient(circle_at_30%_30%,rgba(255,255,255,0.94),rgba(255,255,255,0.38))] shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_24px_50px_rgba(90,66,45,0.12)] motion-safe:animate-[pulse_3s_ease-in-out_infinite]">
-                        <div className="absolute inset-[10px] rounded-full border border-[#181411]/5" />
+                  {step === "playing" && (
+                    <div className="flex flex-1 flex-col items-center justify-center text-center">
+                      <p className="mb-4 text-[12px] font-semibold uppercase tracking-[0.14em] text-[#181411]/45">
+                        Now listening
+                      </p>
+
+                      <h1 className="max-w-[320px] text-[28px] font-semibold leading-[1.05] tracking-[-0.04em] sm:text-[30px]">
+                        {senderLabel} left you a message
+                      </h1>
+
+                      <p className="mt-3 text-[15px] tracking-[-0.01em] text-[#6f655e]">
+                        Take this moment in.
+                      </p>
+
+                      {noteLabel ? (
+                        <p className="mt-3 max-w-[280px] text-[14px] italic text-[#6f655e]">
+                          “{noteLabel}”
+                        </p>
+                      ) : null}
+
+                      <div className="mt-10 w-full rounded-[28px] border border-white/80 bg-white/65 px-5 py-6 shadow-[0_12px_30px_rgba(58,42,27,0.08)] backdrop-blur-md">
+                        <div className="mb-5 flex h-[104px] items-end justify-center gap-[6px]">
+                          {[26, 46, 70, 50, 82, 58, 34, 76, 42].map(
+                            (height, i) => (
+                              <span
+                                key={i}
+                                className="inline-block w-[6px] origin-bottom rounded-full bg-gradient-to-b from-[#181411]/20 to-[#181411]/70 motion-safe:animate-[pulse_1.1s_ease-in-out_infinite]"
+                                style={{
+                                  height,
+                                  animationDelay: `${-0.1 * i}s`,
+                                }}
+                              />
+                            ),
+                          )}
+                        </div>
+
+                        <div className="mx-auto h-2 w-full max-w-[260px] overflow-hidden rounded-full bg-[#181411]/8">
+                          <div
+                            className="h-full rounded-full bg-gradient-to-r from-[#2f2520] to-[#8d786a] transition-all duration-300"
+                            style={{ width: `${progress}%` }}
+                          />
+                        </div>
+
+                        <div className="mt-6 flex items-center justify-center gap-3">
+                          {isPlaying ? (
+                            <button
+                              type="button"
+                              onClick={handlePause}
+                              className="grid h-[74px] w-[74px] place-items-center rounded-full bg-gradient-to-b from-[#26201b] to-[#15110f] text-white shadow-[0_16px_28px_rgba(21,17,15,0.2)] transition duration-150 hover:brightness-105 active:scale-95"
+                              aria-label="Pause message"
+                            >
+                              <span className="flex gap-2">
+                                <span className="block h-6 w-[6px] rounded-full bg-white" />
+                                <span className="block h-6 w-[6px] rounded-full bg-white" />
+                              </span>
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={handleResume}
+                              className="grid h-[74px] w-[74px] place-items-center rounded-full bg-gradient-to-b from-[#26201b] to-[#15110f] text-white shadow-[0_16px_28px_rgba(21,17,15,0.2)] transition duration-150 hover:brightness-105 active:scale-95"
+                              aria-label="Resume message"
+                            >
+                              <span className="ml-1 inline-block h-0 w-0 border-b-[12px] border-l-[18px] border-t-[12px] border-b-transparent border-l-white border-t-transparent" />
+                            </button>
+                          )}
+                        </div>
+
+                        <div className="mt-4 text-center text-[13px] tracking-[0.01em] text-[#181411]/55">
+                          {formatTime(currentTime)} / {formatTime(duration)}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {step === "ended" && (
+                    <div className="flex flex-1 flex-col items-center justify-center text-center">
+                      <div className="mb-6 grid h-[78px] w-[78px] place-items-center rounded-full border border-white/80 bg-[radial-gradient(circle_at_30%_30%,rgba(255,255,255,0.95),rgba(255,255,255,0.5))] text-[34px] shadow-[0_12px_30px_rgba(58,42,27,0.08)]">
+                        ✓
+                      </div>
+
+                      <p className="mb-4 text-[12px] font-semibold uppercase tracking-[0.14em] text-[#181411]/45">
+                        A small moment kept
+                      </p>
+
+                      <h1 className="max-w-[290px] text-[32px] font-semibold leading-[1.05] tracking-[-0.04em] sm:text-[34px]">
+                        That was special
+                      </h1>
+
+                      <p className="mt-3 max-w-[300px] text-[15px] tracking-[-0.01em] text-[#6f655e]">
+                        Send a moment like this to someone you care about.
+                      </p>
+
+                      <div className="mt-8 grid w-full gap-3">
                         <button
                           type="button"
-                          onClick={handlePlay}
-                          disabled={!existingMessage.audio_url}
-                          className="relative grid h-28 w-28 place-items-center rounded-full bg-gradient-to-b from-[#26201b] to-[#15110f] text-white shadow-[0_18px_30px_rgba(21,17,15,0.24),inset_0_1px_0_rgba(255,255,255,0.12)] transition duration-150 hover:brightness-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
-                          aria-label="Play message"
+                          onClick={handleCreateEchoNote}
+                          className="min-h-[56px] rounded-[18px] bg-gradient-to-b from-[#26201b] to-[#15110f] px-5 text-[16px] font-semibold tracking-[-0.02em] text-white shadow-[0_18px_30px_rgba(21,17,15,0.18)] transition duration-150 hover:brightness-105 active:scale-[0.98]"
                         >
-                          <span className="ml-1 inline-block h-0 w-0 border-b-[14px] border-l-[22px] border-t-[14px] border-b-transparent border-l-white border-t-transparent" />
+                          Send your own EchoNote
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={handleReplay}
+                          className="min-h-[56px] rounded-[18px] border border-[#181411]/8 bg-white/65 px-5 text-[16px] font-semibold tracking-[-0.02em] text-[#181411] shadow-[0_8px_18px_rgba(58,42,27,0.05)] transition duration-150 hover:bg-white/80 active:scale-[0.98]"
+                        >
+                          Replay message
                         </button>
                       </div>
 
-                      <div className="text-[15px] font-semibold tracking-[-0.01em]">
-                        {audioReady || !existingMessage.audio_url ? "Play message" : "Preparing audio..."}
+                      <div className="mt-3 text-center text-[13px] text-[#181411]/55">
+                        Your first one is free
                       </div>
-                      <div className="text-[12px] text-[#181411]/45">No app required</div>
-                      {playbackError ? (
-                        <p className="max-w-[240px] text-center text-[12px] text-red-600">
-                          {playbackError}
-                        </p>
-                      ) : null}
-                    </div>
-                  </div>
-                )}
 
-                {step === "playing" && (
-                  <div className="flex flex-1 flex-col items-center justify-center text-center">
-                    <p className="mb-4 text-[12px] font-semibold uppercase tracking-[0.14em] text-[#181411]/45">
-                      Now listening
-                    </p>
-
-                    <h1 className="max-w-[320px] text-[28px] font-semibold leading-[1.05] tracking-[-0.04em] sm:text-[30px]">
-                      {senderLabel} left you a message
-                    </h1>
-
-                    <p className="mt-3 text-[15px] tracking-[-0.01em] text-[#6f655e]">
-                      Take this moment in.
-                    </p>
-
-                    {noteLabel ? (
-                      <p className="mt-3 max-w-[280px] text-[14px] italic text-[#6f655e]">
-                        “{noteLabel}”
-                      </p>
-                    ) : null}
-
-                    <div className="mt-10 w-full rounded-[28px] border border-white/80 bg-white/65 px-5 py-6 shadow-[0_12px_30px_rgba(58,42,27,0.08)] backdrop-blur-md">
-                      <div className="mb-5 flex h-[104px] items-end justify-center gap-[6px]">
-                        {[26, 46, 70, 50, 82, 58, 34, 76, 42].map((height, i) => (
-                          <span
-                            key={i}
-                            className="inline-block w-[6px] origin-bottom rounded-full bg-gradient-to-b from-[#181411]/20 to-[#181411]/70 motion-safe:animate-[pulse_1.1s_ease-in-out_infinite]"
-                            style={{ height, animationDelay: `${-0.1 * i}s` }}
-                          />
+                      <div className="mt-4 flex flex-wrap justify-center gap-2">
+                        {[
+                          "No signup required",
+                          "Takes seconds",
+                          "Order stickers later",
+                        ].map((item) => (
+                          <div
+                            key={item}
+                            className="rounded-full border border-[#181411]/6 bg-white/55 px-3 py-2 text-[12px] text-[#181411]/58 backdrop-blur-md"
+                          >
+                            {item}
+                          </div>
                         ))}
                       </div>
-
-                      <div className="mx-auto h-2 w-full max-w-[260px] overflow-hidden rounded-full bg-[#181411]/8">
-                        <div
-                          className="h-full rounded-full bg-gradient-to-r from-[#2f2520] to-[#8d786a] transition-all duration-300"
-                          style={{ width: `${progress}%` }}
-                        />
-                      </div>
-
-                      <div className="mt-6 flex items-center justify-center gap-3">
-                        {isPlaying ? (
-                          <button
-                            type="button"
-                            onClick={handlePause}
-                            className="grid h-[74px] w-[74px] place-items-center rounded-full bg-gradient-to-b from-[#26201b] to-[#15110f] text-white shadow-[0_16px_28px_rgba(21,17,15,0.2)] transition duration-150 hover:brightness-105 active:scale-95"
-                            aria-label="Pause message"
-                          >
-                            <span className="flex gap-2">
-                              <span className="block h-6 w-[6px] rounded-full bg-white" />
-                              <span className="block h-6 w-[6px] rounded-full bg-white" />
-                            </span>
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={handleResume}
-                            className="grid h-[74px] w-[74px] place-items-center rounded-full bg-gradient-to-b from-[#26201b] to-[#15110f] text-white shadow-[0_16px_28px_rgba(21,17,15,0.2)] transition duration-150 hover:brightness-105 active:scale-95"
-                            aria-label="Resume message"
-                          >
-                            <span className="ml-1 inline-block h-0 w-0 border-b-[12px] border-l-[18px] border-t-[12px] border-b-transparent border-l-white border-t-transparent" />
-                          </button>
-                        )}
-                      </div>
-
-                      <div className="mt-4 text-center text-[13px] tracking-[0.01em] text-[#181411]/55">
-                        {formatTime(currentTime)} / {formatTime(duration)}
-                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
+                </>
+              )}
 
-                {step === "ended" && (
-                  <div className="flex flex-1 flex-col items-center justify-center text-center">
-                    <div className="mb-6 grid h-[78px] w-[78px] place-items-center rounded-full border border-white/80 bg-[radial-gradient(circle_at_30%_30%,rgba(255,255,255,0.95),rgba(255,255,255,0.5))] text-[34px] shadow-[0_12px_30px_rgba(58,42,27,0.08)]">
-                      ✓
-                    </div>
-
-                    <p className="mb-4 text-[12px] font-semibold uppercase tracking-[0.14em] text-[#181411]/45">
-                      A small moment kept
-                    </p>
-
-                    <h1 className="max-w-[290px] text-[32px] font-semibold leading-[1.05] tracking-[-0.04em] sm:text-[34px]">
-                      That was special
-                    </h1>
-
-                    <p className="mt-3 max-w-[300px] text-[15px] tracking-[-0.01em] text-[#6f655e]">
-                      Send a moment like this to someone you care about.
-                    </p>
-
-                    <div className="mt-8 grid w-full gap-3">
-                      <button
-                        type="button"
-                        onClick={handleCreateEchoNote}
-                        className="min-h-[56px] rounded-[18px] bg-gradient-to-b from-[#26201b] to-[#15110f] px-5 text-[16px] font-semibold tracking-[-0.02em] text-white shadow-[0_18px_30px_rgba(21,17,15,0.18)] transition duration-150 hover:brightness-105 active:scale-[0.98]"
-                      >
-                        Send your own EchoNote
-                      </button>
-
-                      <button
-                        type="button"
-                        onClick={handleReplay}
-                        className="min-h-[56px] rounded-[18px] border border-[#181411]/8 bg-white/65 px-5 text-[16px] font-semibold tracking-[-0.02em] text-[#181411] shadow-[0_8px_18px_rgba(58,42,27,0.05)] transition duration-150 hover:bg-white/80 active:scale-[0.98]"
-                      >
-                        Replay message
-                      </button>
-                    </div>
-
-                    <div className="mt-3 text-center text-[13px] text-[#181411]/55">
-                      Your first one is free
-                    </div>
-
-                    <div className="mt-4 flex flex-wrap justify-center gap-2">
-                      {["No signup required", "Takes seconds", "Order stickers later"].map((item) => (
-                        <div
-                          key={item}
-                          className="rounded-full border border-[#181411]/6 bg-white/55 px-3 py-2 text-[12px] text-[#181411]/58 backdrop-blur-md"
-                        >
-                          {item}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-
-            {(step === "intro" || step === "recording" || step === "review" || step === "success") && (
+            {(step === "intro" ||
+              step === "recording" ||
+              step === "review" ||
+              step === "success") && (
               <>
                 {step === "intro" && (
                   <div className="flex flex-1 flex-col justify-center space-y-8">
@@ -564,7 +593,8 @@ export default function MessagePage({
                           Leave a message
                         </h1>
                         <p className="mx-auto max-w-[280px] text-[15px] leading-7 text-[#6f655e]">
-                          Record something they can hear the moment they scan this EchoNote.
+                          Record something they can hear the moment they scan
+                          this EchoNote.
                         </p>
                       </div>
                     </div>
@@ -620,11 +650,15 @@ export default function MessagePage({
                       </div>
 
                       {senderName ? (
-                        <p className="text-lg font-semibold text-[#181411]">From {senderName}</p>
+                        <p className="text-lg font-semibold text-[#181411]">
+                          From {senderName}
+                        </p>
                       ) : null}
 
                       {note ? (
-                        <p className="mx-auto max-w-[260px] text-base italic text-[#6f655e]">“{note}”</p>
+                        <p className="mx-auto max-w-[260px] text-base italic text-[#6f655e]">
+                          “{note}”
+                        </p>
                       ) : null}
                     </div>
 
@@ -660,11 +694,15 @@ export default function MessagePage({
                       </div>
 
                       {senderName ? (
-                        <p className="text-lg font-semibold text-[#181411]">From {senderName}</p>
+                        <p className="text-lg font-semibold text-[#181411]">
+                          From {senderName}
+                        </p>
                       ) : null}
 
                       {note ? (
-                        <p className="mx-auto max-w-[260px] text-base italic text-[#6f655e]">“{note}”</p>
+                        <p className="mx-auto max-w-[260px] text-base italic text-[#6f655e]">
+                          “{note}”
+                        </p>
                       ) : null}
                     </div>
 
@@ -750,13 +788,17 @@ export default function MessagePage({
                     onClick={handleOrderStickers}
                     className="text-[13px] font-medium text-[#181411]/60 underline underline-offset-4"
                   >
-                    Order QR stickers
+                    Order EchoNote Stickers
                   </button>
-                  <p className="text-[12px] text-[#181411]/38">Made to be kept</p>
+                  <p className="text-[12px] text-[#181411]/38">
+                    Made to be kept
+                  </p>
                 </>
               ) : (
                 <>
-                  <p className="text-[13px] text-[#181411]/55">Made to be kept</p>
+                  <p className="text-[13px] text-[#181411]/55">
+                    Made to be kept
+                  </p>
                   <p className="text-[12px] text-[#181411]/38">
                     A private message, opened in one tap
                   </p>
