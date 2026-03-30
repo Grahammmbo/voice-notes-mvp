@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
 type Step =
@@ -9,7 +10,9 @@ type Step =
   | "recording"
   | "review"
   | "success"
-  | "playback";
+  | "preplay"
+  | "playing"
+  | "ended";
 
 type ExistingMessage = {
   audio_url: string;
@@ -17,11 +20,21 @@ type ExistingMessage = {
   note: string | null;
 };
 
+function formatTime(seconds: number) {
+  if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
+  const mins = Math.floor(seconds / 60);
+  const secs = Math.floor(seconds % 60);
+  return `${mins}:${secs.toString().padStart(2, "0")}`;
+}
+
 export default function MessagePage({
   params,
 }: {
   params: Promise<{ slug: string }>;
 }) {
+  const nextParams = useParams<{ slug: string }>();
+  const router = useRouter();
+
   const [slug, setSlug] = useState("");
   const [step, setStep] = useState<Step>("loading");
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
@@ -32,18 +45,24 @@ export default function MessagePage({
   const [senderName, setSenderName] = useState("");
   const [note, setNote] = useState("");
 
-  const [showPlaybackIntro, setShowPlaybackIntro] = useState(false);
-
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
+  const playbackAudioRef = useRef<HTMLAudioElement | null>(null);
+
+  const [audioReady, setAudioReady] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+  const [playbackError, setPlaybackError] = useState<string | null>(null);
 
   useEffect(() => {
     const load = async () => {
       const resolved = await params;
-      setSlug(resolved.slug);
+      const resolvedSlug = resolved?.slug || nextParams?.slug || "";
+      setSlug(Array.isArray(resolvedSlug) ? resolvedSlug[0] : resolvedSlug);
     };
     load();
-  }, [params]);
+  }, [params, nextParams]);
 
   useEffect(() => {
     if (!slug) return;
@@ -66,12 +85,7 @@ export default function MessagePage({
       if (data) {
         setExistingMessage(data);
         setAudioUrl(data.audio_url);
-        setShowPlaybackIntro(true);
-
-        setTimeout(() => {
-          setShowPlaybackIntro(false);
-          setStep("playback");
-        }, 1100);
+        setStep("preplay");
       } else {
         setStep("intro");
       }
@@ -79,6 +93,56 @@ export default function MessagePage({
 
     checkExisting();
   }, [slug]);
+
+  useEffect(() => {
+    const audio = playbackAudioRef.current;
+    if (!audio || !existingMessage?.audio_url) return;
+
+    const onLoadedMetadata = () => {
+      setDuration(audio.duration || 0);
+      setAudioReady(true);
+    };
+
+    const onTimeUpdate = () => {
+      setCurrentTime(audio.currentTime || 0);
+    };
+
+    const onEnded = () => {
+      setIsPlaying(false);
+      setStep("ended");
+      setCurrentTime(audio.duration || 0);
+    };
+
+    const onPlay = () => {
+      setIsPlaying(true);
+      setStep("playing");
+      setPlaybackError(null);
+    };
+
+    const onPause = () => {
+      setIsPlaying(false);
+    };
+
+    const onError = () => {
+      setPlaybackError("This audio couldn’t be played.");
+    };
+
+    audio.addEventListener("loadedmetadata", onLoadedMetadata);
+    audio.addEventListener("timeupdate", onTimeUpdate);
+    audio.addEventListener("ended", onEnded);
+    audio.addEventListener("play", onPlay);
+    audio.addEventListener("pause", onPause);
+    audio.addEventListener("error", onError);
+
+    return () => {
+      audio.removeEventListener("loadedmetadata", onLoadedMetadata);
+      audio.removeEventListener("timeupdate", onTimeUpdate);
+      audio.removeEventListener("ended", onEnded);
+      audio.removeEventListener("play", onPlay);
+      audio.removeEventListener("pause", onPause);
+      audio.removeEventListener("error", onError);
+    };
+  }, [existingMessage?.audio_url]);
 
   const startRecording = async () => {
     try {
@@ -150,6 +214,9 @@ export default function MessagePage({
 
       setExistingMessage(saved);
       setAudioUrl(saved.audio_url);
+      setCurrentTime(0);
+      setDuration(0);
+      setAudioReady(false);
       setStep("success");
     } catch (error) {
       console.error("Save error:", error);
@@ -157,84 +224,64 @@ export default function MessagePage({
     }
   };
 
+  const handlePlay = async () => {
+    const audio = playbackAudioRef.current;
+    if (!audio || !existingMessage?.audio_url) return;
+
+    try {
+      if (step === "ended") {
+        audio.currentTime = 0;
+        setCurrentTime(0);
+      }
+      await audio.play();
+    } catch (error) {
+      console.error("Playback failed:", error);
+      setPlaybackError("Playback was blocked. Tap again to try.");
+    }
+  };
+
+  const handlePause = () => {
+    playbackAudioRef.current?.pause();
+  };
+
+  const handleReplay = () => {
+    const audio = playbackAudioRef.current;
+    if (!audio) return;
+    audio.pause();
+    audio.currentTime = 0;
+    setCurrentTime(0);
+    setStep("preplay");
+    setIsPlaying(false);
+  };
+
+  const handleCreateEchoNote = () => {
+    router.push("/create");
+  };
+
+  const handleOrderStickers = () => {
+    router.push("/shop");
+  };
+
+  const senderLabel = useMemo(() => {
+    return existingMessage?.sender_name?.trim() || "Someone special";
+  }, [existingMessage?.sender_name]);
+
+  const noteLabel = existingMessage?.note?.trim();
+  const progress = duration > 0 ? Math.min((currentTime / duration) * 100, 100) : 0;
+
   if (step === "loading") {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-stone-50 px-6">
-        <div className="space-y-3 text-center">
-          <div className="mx-auto h-10 w-10 animate-pulse rounded-full bg-stone-200" />
-          <p className="text-sm text-stone-500">Loading your message...</p>
-        </div>
-      </main>
-    );
-  }
-
-  if (showPlaybackIntro && existingMessage) {
-    return (
-      <main className="flex min-h-screen items-center justify-center bg-stone-50 px-6">
-        <style>{`
-          @keyframes premiumFade {
-            0% {
-              opacity: 0;
-              transform: translateY(14px) scale(0.98);
-            }
-            100% {
-              opacity: 1;
-              transform: translateY(0) scale(1);
-            }
-          }
-
-          @keyframes premiumPulse {
-            0%, 100% {
-              transform: scale(1);
-              box-shadow: 0 0 0 0 rgba(120, 113, 108, 0.12);
-            }
-            50% {
-              transform: scale(1.04);
-              box-shadow: 0 0 0 14px rgba(120, 113, 108, 0);
-            }
-          }
-
-          .premium-fade {
-            animation: premiumFade 650ms ease-out both;
-          }
-
-          .premium-pulse {
-            animation: premiumPulse 2.2s ease-in-out infinite;
-          }
-        `}</style>
-
-        <div className="premium-fade w-full max-w-md text-center">
-          <div className="space-y-6 rounded-[28px] border border-stone-200 bg-white p-8 shadow-sm">
-            <div className="space-y-3">
-              <p className="text-xs font-medium uppercase tracking-[0.28em] text-stone-400">
-                EchoNote
-              </p>
-            </div>
-
-            <div className="premium-pulse mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-stone-100 text-3xl">
-              💌
-            </div>
-
-            <div className="space-y-3">
-              <p className="text-xs font-medium uppercase tracking-[0.22em] text-stone-400">
+      <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.9),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(221,198,173,0.35),transparent_28%),linear-gradient(180deg,#f8f5f0_0%,#f2ece4_100%)] px-6 py-10 text-[#181411]">
+        <div className="mx-auto flex min-h-[80vh] max-w-md items-center justify-center">
+          <div className="space-y-5 text-center">
+            <div className="mx-auto h-16 w-16 animate-pulse rounded-full bg-white/70 shadow-[0_12px_30px_rgba(58,42,27,0.08)]" />
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#181411]/45">
                 Opening your message
               </p>
-
-              <h1 className="text-3xl font-semibold tracking-tight text-stone-900">
-                A message is waiting for you
+              <h1 className="text-3xl font-semibold tracking-[-0.04em]">
+                A moment is waiting for you
               </h1>
-
-              {existingMessage.sender_name && (
-                <p className="text-xl font-semibold text-stone-900">
-                  From {existingMessage.sender_name}
-                </p>
-              )}
-
-              {existingMessage.note && (
-                <p className="mx-auto max-w-xs text-base italic text-stone-600">
-                  “{existingMessage.note}”
-                </p>
-              )}
             </div>
           </div>
         </div>
@@ -243,257 +290,387 @@ export default function MessagePage({
   }
 
   return (
-    <main className="min-h-screen bg-stone-50 px-6 py-10">
-      <div className="mx-auto max-w-md">
-        <style>{`
-          @keyframes cardFadeUp {
-            0% {
-              opacity: 0;
-              transform: translateY(10px);
-            }
-            100% {
-              opacity: 1;
-              transform: translateY(0);
-            }
-          }
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.9),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(221,198,173,0.35),transparent_28%),linear-gradient(180deg,#f8f5f0_0%,#f2ece4_100%)] px-4 py-6 text-[#181411] sm:px-6">
+      <div className="mx-auto flex min-h-[calc(100vh-3rem)] max-w-md items-center justify-center">
+        <div className="relative w-full overflow-hidden rounded-[36px] border border-white/70 bg-white/75 shadow-[0_24px_80px_rgba(58,42,27,0.14)] backdrop-blur-xl">
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_18%,rgba(255,255,255,0.8),transparent_24%),radial-gradient(circle_at_50%_120%,rgba(223,196,169,0.18),transparent_35%)]" />
+          <div className="absolute left-1/2 top-0 z-20 h-7 w-32 -translate-x-1/2 rounded-b-[18px] bg-[#181411]" />
 
-          .card-fade-up {
-            animation: cardFadeUp 500ms ease-out both;
-          }
-        `}</style>
+          <section className="relative z-10 flex min-h-[780px] flex-col px-6 pb-7 pt-14 sm:px-7">
+            {existingMessage?.audio_url ? (
+              <audio
+                ref={playbackAudioRef}
+                src={existingMessage.audio_url}
+                preload="metadata"
+              />
+            ) : null}
 
-        <div className="mb-6 text-center">
-          <p className="text-xs font-medium uppercase tracking-[0.28em] text-stone-400">
-            EchoNote
-          </p>
-        </div>
-
-        <div className="rounded-[28px] border border-stone-200 bg-white p-6 shadow-sm">
-          {step === "intro" && (
-            <div className="space-y-6">
-              <div className="space-y-3 text-center">
-                <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-stone-100 text-2xl">
-                  💛
-                </div>
-                <h1 className="text-3xl font-semibold tracking-tight text-stone-900">
-                  Leave a message
-                </h1>
-                <p className="text-sm leading-6 text-stone-500">
-                  Record something they can hear when they scan this.
-                </p>
-              </div>
-
-              <div className="space-y-3">
-                <input
-                  placeholder="Your name (optional)"
-                  value={senderName}
-                  onChange={(e) => setSenderName(e.target.value)}
-                  className="w-full rounded-2xl border border-stone-300 px-4 py-3 text-stone-900 placeholder:text-stone-400 outline-none focus:border-stone-900"
-                />
-
-                <input
-                  placeholder="Add a short note (optional)"
-                  value={note}
-                  onChange={(e) => setNote(e.target.value)}
-                  className="w-full rounded-2xl border border-stone-300 px-4 py-3 text-stone-900 placeholder:text-stone-400 outline-none focus:border-stone-900"
-                />
-              </div>
-
-              <button
-                onClick={startRecording}
-                className="w-full rounded-2xl bg-stone-900 px-6 py-3.5 text-base font-medium text-white transition hover:opacity-95"
-              >
-                Start recording
-              </button>
+            <div className="mt-2 flex items-center justify-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#181411]/55">
+              <span className="h-2 w-2 rounded-full bg-gradient-to-b from-[#2f2520] to-[#8d786a] shadow-[0_0_0_4px_rgba(141,120,106,0.08)]" />
+              EchoNote
             </div>
-          )}
 
-          {step === "recording" && (
-            <div className="space-y-6">
-              <div className="space-y-4 text-center">
-                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-red-50 text-2xl">
-                  🎙️
-                </div>
+            {(step === "preplay" || step === "playing" || step === "ended") && existingMessage && (
+              <>
+                {step === "preplay" && (
+                  <div className="flex flex-1 flex-col items-center justify-center text-center">
+                    <p className="mb-4 text-[12px] font-semibold uppercase tracking-[0.14em] text-[#181411]/45">
+                      A moment is waiting
+                    </p>
 
-                <div className="space-y-2">
-                  <h1 className="text-3xl font-semibold tracking-tight text-stone-900">
-                    Recording…
-                  </h1>
-                  <p className="text-sm text-stone-500">
-                    Tap below when you’re ready to stop.
-                  </p>
-                </div>
+                    <h1 className="max-w-[290px] text-[32px] font-semibold leading-[1.05] tracking-[-0.04em] sm:text-[34px]">
+                      A voice note is waiting for you
+                    </h1>
 
-                {senderName && (
-                  <p className="text-lg font-semibold text-stone-900">
-                    From {senderName}
-                  </p>
-                )}
+                    <p className="mt-3 text-[15px] tracking-[-0.01em] text-[#6f655e]">
+                      From {senderLabel}
+                    </p>
 
-                {note && (
-                  <p className="text-base italic text-stone-600">
-                    “{note}”
-                  </p>
-                )}
-              </div>
+                    {noteLabel ? (
+                      <div className="mt-5 max-w-[300px] rounded-[22px] border border-white/80 bg-white/60 px-5 py-4 text-[14px] italic leading-[1.5] text-[#5f564f] shadow-[0_12px_30px_rgba(58,42,27,0.08)] backdrop-blur-md">
+                        “{noteLabel}”
+                      </div>
+                    ) : null}
 
-              <button
-                onClick={stopRecording}
-                className="w-full rounded-2xl bg-red-500 px-6 py-3.5 text-base font-medium text-white transition hover:bg-red-600"
-              >
-                Stop recording
-              </button>
-            </div>
-          )}
+                    <div className="mt-10 flex flex-col items-center gap-4">
+                      <div className="relative grid h-[154px] w-[154px] place-items-center rounded-full bg-[radial-gradient(circle_at_30%_30%,rgba(255,255,255,0.94),rgba(255,255,255,0.38))] shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_24px_50px_rgba(90,66,45,0.12)] motion-safe:animate-[pulse_3s_ease-in-out_infinite]">
+                        <div className="absolute inset-[10px] rounded-full border border-[#181411]/5" />
+                        <button
+                          type="button"
+                          onClick={handlePlay}
+                          disabled={!existingMessage.audio_url}
+                          className="relative grid h-28 w-28 place-items-center rounded-full bg-gradient-to-b from-[#26201b] to-[#15110f] text-white shadow-[0_18px_30px_rgba(21,17,15,0.24),inset_0_1px_0_rgba(255,255,255,0.12)] transition duration-150 hover:brightness-105 active:scale-95 disabled:cursor-not-allowed disabled:opacity-50"
+                          aria-label="Play message"
+                        >
+                          <span className="ml-1 inline-block h-0 w-0 border-b-[14px] border-l-[22px] border-t-[14px] border-b-transparent border-l-white border-t-transparent" />
+                        </button>
+                      </div>
 
-          {step === "review" && audioUrl && (
-            <div className="space-y-6">
-              <div className="space-y-4 text-center">
-                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-stone-100 text-2xl">
-                  🎧
-                </div>
-
-                <div className="space-y-2">
-                  <h1 className="text-3xl font-semibold tracking-tight text-stone-900">
-                    Review your message
-                  </h1>
-                  <p className="text-sm text-stone-500">
-                    Give it one last listen before saving.
-                  </p>
-                </div>
-
-                {senderName && (
-                  <p className="text-lg font-semibold text-stone-900">
-                    From {senderName}
-                  </p>
-                )}
-
-                {note && (
-                  <p className="text-base italic text-stone-600">
-                    “{note}”
-                  </p>
-                )}
-              </div>
-
-              <div className="rounded-2xl border border-stone-200 bg-stone-50 p-4">
-                <audio controls src={audioUrl} className="w-full" />
-              </div>
-
-              <div className="space-y-3">
-                <button
-                  onClick={saveMessage}
-                  className="w-full rounded-2xl bg-stone-900 px-6 py-3.5 text-base font-medium text-white transition hover:opacity-95"
-                >
-                  Save message
-                </button>
-
-                <button
-                  onClick={startRecording}
-                  className="w-full rounded-2xl border border-stone-300 px-6 py-3.5 text-base font-medium text-stone-900 transition hover:bg-stone-50"
-                >
-                  Re-record
-                </button>
-              </div>
-            </div>
-          )}
-
-          {step === "success" && existingMessage && (
-            <div className="space-y-6">
-              <div className="space-y-4 text-center">
-                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-stone-100 text-2xl">
-                  ✨
-                </div>
-
-                <div className="space-y-2">
-                  <h1 className="text-3xl font-semibold tracking-tight text-stone-900">
-                    It’s ready
-                  </h1>
-                  <p className="text-sm text-stone-500">
-                    They’ll hear your voice when they scan it.
-                  </p>
-                </div>
-
-                {existingMessage.sender_name && (
-                  <p className="text-xl font-semibold text-stone-900">
-                    From {existingMessage.sender_name}
-                  </p>
-                )}
-
-                {existingMessage.note && (
-                  <p className="text-base italic text-stone-600">
-                    “{existingMessage.note}”
-                  </p>
-                )}
-              </div>
-
-              <button
-                onClick={() => setStep("playback")}
-                className="w-full rounded-2xl bg-stone-900 px-6 py-3.5 text-base font-medium text-white transition hover:opacity-95"
-              >
-                Preview message
-              </button>
-            </div>
-          )}
-
-          {step === "playback" && existingMessage && (
-            <div className="card-fade-up space-y-6">
-              <div className="space-y-5 text-center">
-                <div className="mx-auto inline-flex rounded-full border border-stone-200 bg-stone-50 px-4 py-2">
-                  <p className="text-[10px] font-medium uppercase tracking-[0.26em] text-stone-500">
-                    EchoNote
-                  </p>
-                </div>
-
-                <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-stone-100 text-3xl">
-                  💌
-                </div>
-
-                <div className="space-y-2">
-                  <p className="text-xs font-medium uppercase tracking-[0.24em] text-stone-400">
-                    You received a voice message
-                  </p>
-                  <h1 className="text-3xl font-semibold tracking-tight text-stone-900">
-                    A message is waiting for you
-                  </h1>
-                </div>
-
-                {existingMessage.sender_name && (
-                  <p className="text-xl font-semibold text-stone-900">
-                    From {existingMessage.sender_name}
-                  </p>
-                )}
-
-                {existingMessage.note && (
-                  <p className="mx-auto max-w-xs text-base italic text-stone-600">
-                    “{existingMessage.note}”
-                  </p>
-                )}
-              </div>
-
-              <div className="rounded-3xl border border-stone-200 bg-stone-50 p-4 shadow-[0_1px_0_rgba(0,0,0,0.02)]">
-                <div className="mb-3 flex items-center justify-between">
-                  <p className="text-sm font-medium text-stone-700">
-                    Voice message
-                  </p>
-                  <div className="flex gap-1.5">
-                    <span className="h-1.5 w-1.5 rounded-full bg-stone-300" />
-                    <span className="h-1.5 w-1.5 rounded-full bg-stone-300" />
-                    <span className="h-1.5 w-1.5 rounded-full bg-stone-300" />
+                      <div className="text-[15px] font-semibold tracking-[-0.01em]">
+                        {audioReady || !existingMessage.audio_url ? "Play message" : "Preparing audio..."}
+                      </div>
+                      <div className="text-[12px] text-[#181411]/45">No app required</div>
+                      {playbackError ? (
+                        <p className="max-w-[240px] text-center text-[12px] text-red-600">
+                          {playbackError}
+                        </p>
+                      ) : null}
+                    </div>
                   </div>
-                </div>
+                )}
 
-                <audio
-                  controls
-                  src={existingMessage.audio_url}
-                  className="w-full"
-                />
-              </div>
+                {step === "playing" && (
+                  <div className="flex flex-1 flex-col items-center justify-center text-center">
+                    <p className="mb-4 text-[12px] font-semibold uppercase tracking-[0.14em] text-[#181411]/45">
+                      Now listening
+                    </p>
 
-              <p className="text-center text-xs uppercase tracking-[0.22em] text-stone-400">
-                Sent with EchoNote
-              </p>
+                    <h1 className="max-w-[320px] text-[28px] font-semibold leading-[1.05] tracking-[-0.04em] sm:text-[30px]">
+                      {senderLabel} left you a message
+                    </h1>
+
+                    <p className="mt-3 text-[15px] tracking-[-0.01em] text-[#6f655e]">
+                      Take this moment in.
+                    </p>
+
+                    {noteLabel ? (
+                      <p className="mt-3 max-w-[280px] text-[14px] italic text-[#6f655e]">
+                        “{noteLabel}”
+                      </p>
+                    ) : null}
+
+                    <div className="mt-10 w-full rounded-[28px] border border-white/80 bg-white/65 px-5 py-6 shadow-[0_12px_30px_rgba(58,42,27,0.08)] backdrop-blur-md">
+                      <div className="mb-5 flex h-[104px] items-end justify-center gap-[6px]">
+                        {[26, 46, 70, 50, 82, 58, 34, 76, 42].map((height, i) => (
+                          <span
+                            key={i}
+                            className="inline-block w-[6px] origin-bottom rounded-full bg-gradient-to-b from-[#181411]/20 to-[#181411]/70 motion-safe:animate-[pulse_1.1s_ease-in-out_infinite]"
+                            style={{ height, animationDelay: `${-0.1 * i}s` }}
+                          />
+                        ))}
+                      </div>
+
+                      <div className="mx-auto h-2 w-full max-w-[260px] overflow-hidden rounded-full bg-[#181411]/8">
+                        <div
+                          className="h-full rounded-full bg-gradient-to-r from-[#2f2520] to-[#8d786a] transition-all duration-300"
+                          style={{ width: `${progress}%` }}
+                        />
+                      </div>
+
+                      <div className="mt-6 flex items-center justify-center gap-3">
+                        <button
+                          type="button"
+                          onClick={handlePause}
+                          className="grid h-[74px] w-[74px] place-items-center rounded-full bg-gradient-to-b from-[#26201b] to-[#15110f] text-white shadow-[0_16px_28px_rgba(21,17,15,0.2)] transition duration-150 hover:brightness-105 active:scale-95"
+                          aria-label="Pause message"
+                        >
+                          <span className="flex gap-2">
+                            <span className="block h-6 w-[6px] rounded-full bg-white" />
+                            <span className="block h-6 w-[6px] rounded-full bg-white" />
+                          </span>
+                        </button>
+                      </div>
+
+                      <div className="mt-4 text-center text-[13px] tracking-[0.01em] text-[#181411]/55">
+                        {formatTime(currentTime)} / {formatTime(duration)}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {step === "ended" && (
+                  <div className="flex flex-1 flex-col items-center justify-center text-center">
+                    <div className="mb-6 grid h-[78px] w-[78px] place-items-center rounded-full border border-white/80 bg-[radial-gradient(circle_at_30%_30%,rgba(255,255,255,0.95),rgba(255,255,255,0.5))] text-[34px] shadow-[0_12px_30px_rgba(58,42,27,0.08)]">
+                      ✓
+                    </div>
+
+                    <p className="mb-4 text-[12px] font-semibold uppercase tracking-[0.14em] text-[#181411]/45">
+                      A small moment kept
+                    </p>
+
+                    <h1 className="max-w-[290px] text-[32px] font-semibold leading-[1.05] tracking-[-0.04em] sm:text-[34px]">
+                      That was special
+                    </h1>
+
+                    <p className="mt-3 max-w-[300px] text-[15px] tracking-[-0.01em] text-[#6f655e]">
+                      Send a moment like this to someone you care about.
+                    </p>
+
+                    <div className="mt-8 grid w-full gap-3">
+                      <button
+                        type="button"
+                        onClick={handleCreateEchoNote}
+                        className="min-h-[56px] rounded-[18px] bg-gradient-to-b from-[#26201b] to-[#15110f] px-5 text-[16px] font-semibold tracking-[-0.02em] text-white shadow-[0_18px_30px_rgba(21,17,15,0.18)] transition duration-150 hover:brightness-105 active:scale-[0.98]"
+                      >
+                        Send your own EchoNote
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleReplay}
+                        className="min-h-[56px] rounded-[18px] border border-[#181411]/8 bg-white/65 px-5 text-[16px] font-semibold tracking-[-0.02em] text-[#181411] shadow-[0_8px_18px_rgba(58,42,27,0.05)] transition duration-150 hover:bg-white/80 active:scale-[0.98]"
+                      >
+                        Replay message
+                      </button>
+                    </div>
+
+                    <div className="mt-3 text-center text-[13px] text-[#181411]/55">
+                      Your first one is free
+                    </div>
+
+                    <div className="mt-4 flex flex-wrap justify-center gap-2">
+                      {["No signup required", "Takes seconds", "Order stickers later"].map((item) => (
+                        <div
+                          key={item}
+                          className="rounded-full border border-[#181411]/6 bg-white/55 px-3 py-2 text-[12px] text-[#181411]/58 backdrop-blur-md"
+                        >
+                          {item}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+
+            {(step === "intro" || step === "recording" || step === "review" || step === "success") && (
+              <>
+                {step === "intro" && (
+                  <div className="flex flex-1 flex-col justify-center space-y-8">
+                    <div className="space-y-4 text-center">
+                      <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-white/70 text-2xl shadow-[0_12px_30px_rgba(58,42,27,0.08)]">
+                        💛
+                      </div>
+                      <div className="space-y-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#181411]/45">
+                          Leave a moment behind
+                        </p>
+                        <h1 className="text-[32px] font-semibold leading-[1.05] tracking-[-0.04em] text-[#181411]">
+                          Leave a message
+                        </h1>
+                        <p className="mx-auto max-w-[280px] text-[15px] leading-7 text-[#6f655e]">
+                          Record something they can hear the moment they scan this EchoNote.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      <input
+                        placeholder="Your name (optional)"
+                        value={senderName}
+                        onChange={(e) => setSenderName(e.target.value)}
+                        className="w-full rounded-[18px] border border-[#181411]/10 bg-white/70 px-4 py-3.5 text-[#181411] placeholder:text-[#181411]/35 outline-none transition focus:border-[#181411]/30"
+                      />
+
+                      <input
+                        placeholder="Add a short note (optional)"
+                        value={note}
+                        onChange={(e) => setNote(e.target.value)}
+                        className="w-full rounded-[18px] border border-[#181411]/10 bg-white/70 px-4 py-3.5 text-[#181411] placeholder:text-[#181411]/35 outline-none transition focus:border-[#181411]/30"
+                      />
+                    </div>
+
+                    <button
+                      onClick={startRecording}
+                      className="min-h-[56px] w-full rounded-[18px] bg-gradient-to-b from-[#26201b] to-[#15110f] px-6 py-3.5 text-base font-semibold text-white shadow-[0_18px_30px_rgba(21,17,15,0.18)] transition duration-150 hover:brightness-105 active:scale-[0.98]"
+                    >
+                      Start recording
+                    </button>
+                  </div>
+                )}
+
+                {step === "recording" && (
+                  <div className="flex flex-1 flex-col justify-center space-y-8 text-center">
+                    <div className="space-y-4">
+                      <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-red-50 text-3xl shadow-[0_12px_30px_rgba(58,42,27,0.08)]">
+                        🎙️
+                      </div>
+
+                      <div className="space-y-2">
+                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#181411]/45">
+                          Recording now
+                        </p>
+                        <h1 className="text-[32px] font-semibold leading-[1.05] tracking-[-0.04em] text-[#181411]">
+                          Recording…
+                        </h1>
+                        <p className="text-[15px] text-[#6f655e]">
+                          Tap below when you’re ready to stop.
+                        </p>
+                      </div>
+
+                      {senderName ? (
+                        <p className="text-lg font-semibold text-[#181411]">From {senderName}</p>
+                      ) : null}
+
+                      {note ? (
+                        <p className="mx-auto max-w-[260px] text-base italic text-[#6f655e]">“{note}”</p>
+                      ) : null}
+                    </div>
+
+                    <button
+                      onClick={stopRecording}
+                      className="min-h-[56px] w-full rounded-[18px] bg-red-500 px-6 py-3.5 text-base font-semibold text-white shadow-[0_18px_30px_rgba(239,68,68,0.22)] transition duration-150 hover:bg-red-600 active:scale-[0.98]"
+                    >
+                      Stop recording
+                    </button>
+                  </div>
+                )}
+
+                {step === "review" && audioUrl && (
+                  <div className="flex flex-1 flex-col justify-center space-y-8">
+                    <div className="space-y-4 text-center">
+                      <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-white/70 text-2xl shadow-[0_12px_30px_rgba(58,42,27,0.08)]">
+                        🎧
+                      </div>
+
+                      <div className="space-y-2">
+                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#181411]/45">
+                          One last listen
+                        </p>
+                        <h1 className="text-[32px] font-semibold leading-[1.05] tracking-[-0.04em] text-[#181411]">
+                          Review your message
+                        </h1>
+                        <p className="text-[15px] text-[#6f655e]">
+                          Give it one last listen before saving.
+                        </p>
+                      </div>
+
+                      {senderName ? (
+                        <p className="text-lg font-semibold text-[#181411]">From {senderName}</p>
+                      ) : null}
+
+                      {note ? (
+                        <p className="mx-auto max-w-[260px] text-base italic text-[#6f655e]">“{note}”</p>
+                      ) : null}
+                    </div>
+
+                    <div className="rounded-[24px] border border-white/80 bg-white/65 p-4 shadow-[0_12px_30px_rgba(58,42,27,0.08)] backdrop-blur-md">
+                      <audio controls src={audioUrl} className="w-full" />
+                    </div>
+
+                    <div className="space-y-3">
+                      <button
+                        onClick={saveMessage}
+                        className="min-h-[56px] w-full rounded-[18px] bg-gradient-to-b from-[#26201b] to-[#15110f] px-6 py-3.5 text-base font-semibold text-white shadow-[0_18px_30px_rgba(21,17,15,0.18)] transition duration-150 hover:brightness-105 active:scale-[0.98]"
+                      >
+                        Save message
+                      </button>
+
+                      <button
+                        onClick={startRecording}
+                        className="min-h-[56px] w-full rounded-[18px] border border-[#181411]/10 bg-white/65 px-6 py-3.5 text-base font-semibold text-[#181411] shadow-[0_8px_18px_rgba(58,42,27,0.05)] transition duration-150 hover:bg-white/80 active:scale-[0.98]"
+                      >
+                        Re-record
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {step === "success" && existingMessage && (
+                  <div className="flex flex-1 flex-col justify-center space-y-8 text-center">
+                    <div className="space-y-4">
+                      <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-white/70 text-2xl shadow-[0_12px_30px_rgba(58,42,27,0.08)]">
+                        ✨
+                      </div>
+
+                      <div className="space-y-2">
+                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#181411]/45">
+                          Your EchoNote is live
+                        </p>
+                        <h1 className="text-[32px] font-semibold leading-[1.05] tracking-[-0.04em] text-[#181411]">
+                          It’s ready
+                        </h1>
+                        <p className="text-[15px] text-[#6f655e]">
+                          They’ll hear your voice the moment they scan it.
+                        </p>
+                      </div>
+
+                      {existingMessage.sender_name ? (
+                        <p className="text-lg font-semibold text-[#181411]">
+                          From {existingMessage.sender_name}
+                        </p>
+                      ) : null}
+
+                      {existingMessage.note ? (
+                        <p className="mx-auto max-w-[260px] text-base italic text-[#6f655e]">
+                          “{existingMessage.note}”
+                        </p>
+                      ) : null}
+                    </div>
+
+                    <button
+                      onClick={() => setStep("preplay")}
+                      className="min-h-[56px] w-full rounded-[18px] bg-gradient-to-b from-[#26201b] to-[#15110f] px-6 py-3.5 text-base font-semibold text-white shadow-[0_18px_30px_rgba(21,17,15,0.18)] transition duration-150 hover:brightness-105 active:scale-[0.98]"
+                    >
+                      Preview message
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+
+            <div className="mt-auto flex flex-col items-center gap-2 pb-1 text-center">
+              {step === "ended" ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={handleOrderStickers}
+                    className="text-[13px] font-medium text-[#181411]/60 underline underline-offset-4"
+                  >
+                    Order QR stickers
+                  </button>
+                  <p className="text-[12px] text-[#181411]/38">Made to be kept</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-[13px] text-[#181411]/55">Made to be kept</p>
+                  <p className="text-[12px] text-[#181411]/38">
+                    A private message, opened in one tap
+                  </p>
+                </>
+              )}
             </div>
-          )}
+          </section>
         </div>
       </div>
     </main>
