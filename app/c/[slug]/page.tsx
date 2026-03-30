@@ -48,12 +48,14 @@ export default function MessagePage({
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const playbackAudioRef = useRef<HTMLAudioElement | null>(null);
+  const recordingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const [audioReady, setAudioReady] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [playbackError, setPlaybackError] = useState<string | null>(null);
+  const [recordingElapsed, setRecordingElapsed] = useState(0);
 
   useEffect(() => {
     const load = async () => {
@@ -85,6 +87,9 @@ export default function MessagePage({
       if (data) {
         setExistingMessage(data);
         setAudioUrl(data.audio_url);
+        setAudioReady(false);
+        setCurrentTime(0);
+        setDuration(0);
         setStep("preplay");
       } else {
         setStep("intro");
@@ -144,8 +149,39 @@ export default function MessagePage({
     };
   }, [existingMessage?.audio_url]);
 
+  useEffect(() => {
+    return () => {
+      if (recordingIntervalRef.current) {
+        clearInterval(recordingIntervalRef.current);
+      }
+      if (audioUrl && !existingMessage) {
+        URL.revokeObjectURL(audioUrl);
+      }
+    };
+  }, [audioUrl, existingMessage]);
+
+  const triggerHaptic = () => {
+    if (typeof navigator !== "undefined" && "vibrate" in navigator) {
+      navigator.vibrate(12);
+    }
+  };
+
   const startRecording = async () => {
     try {
+      if (recordingIntervalRef.current) {
+        clearInterval(recordingIntervalRef.current);
+        recordingIntervalRef.current = null;
+      }
+
+      if (audioUrl && !existingMessage) {
+        URL.revokeObjectURL(audioUrl);
+        setAudioUrl(null);
+      }
+
+      setAudioBlob(null);
+      setRecordingElapsed(0);
+      setPlaybackError(null);
+
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
 
       const mediaRecorder = new MediaRecorder(stream);
@@ -159,6 +195,11 @@ export default function MessagePage({
       };
 
       mediaRecorder.onstop = () => {
+        if (recordingIntervalRef.current) {
+          clearInterval(recordingIntervalRef.current);
+          recordingIntervalRef.current = null;
+        }
+
         const blob = new Blob(chunksRef.current, { type: "audio/webm" });
         const localUrl = URL.createObjectURL(blob);
         setAudioBlob(blob);
@@ -168,6 +209,9 @@ export default function MessagePage({
       };
 
       mediaRecorder.start();
+      recordingIntervalRef.current = setInterval(() => {
+        setRecordingElapsed((prev) => prev + 1);
+      }, 1000);
       setStep("recording");
     } catch (error) {
       console.error("Mic error:", error);
@@ -228,6 +272,8 @@ export default function MessagePage({
     const audio = playbackAudioRef.current;
     if (!audio || !existingMessage?.audio_url) return;
 
+    triggerHaptic();
+
     try {
       if (step === "ended") {
         audio.currentTime = 0;
@@ -241,12 +287,28 @@ export default function MessagePage({
   };
 
   const handlePause = () => {
+    triggerHaptic();
     playbackAudioRef.current?.pause();
+  };
+
+  const handleResume = async () => {
+    const audio = playbackAudioRef.current;
+    if (!audio) return;
+
+    triggerHaptic();
+
+    try {
+      await audio.play();
+    } catch (error) {
+      console.error("Resume failed:", error);
+      setPlaybackError("Playback was blocked. Tap again to try.");
+    }
   };
 
   const handleReplay = () => {
     const audio = playbackAudioRef.current;
     if (!audio) return;
+    triggerHaptic();
     audio.pause();
     audio.currentTime = 0;
     setCurrentTime(0);
@@ -255,10 +317,12 @@ export default function MessagePage({
   };
 
   const handleCreateEchoNote = () => {
+    triggerHaptic();
     router.push("/create");
   };
 
   const handleOrderStickers = () => {
+    triggerHaptic();
     router.push("/shop");
   };
 
@@ -398,17 +462,28 @@ export default function MessagePage({
                       </div>
 
                       <div className="mt-6 flex items-center justify-center gap-3">
-                        <button
-                          type="button"
-                          onClick={handlePause}
-                          className="grid h-[74px] w-[74px] place-items-center rounded-full bg-gradient-to-b from-[#26201b] to-[#15110f] text-white shadow-[0_16px_28px_rgba(21,17,15,0.2)] transition duration-150 hover:brightness-105 active:scale-95"
-                          aria-label="Pause message"
-                        >
-                          <span className="flex gap-2">
-                            <span className="block h-6 w-[6px] rounded-full bg-white" />
-                            <span className="block h-6 w-[6px] rounded-full bg-white" />
-                          </span>
-                        </button>
+                        {isPlaying ? (
+                          <button
+                            type="button"
+                            onClick={handlePause}
+                            className="grid h-[74px] w-[74px] place-items-center rounded-full bg-gradient-to-b from-[#26201b] to-[#15110f] text-white shadow-[0_16px_28px_rgba(21,17,15,0.2)] transition duration-150 hover:brightness-105 active:scale-95"
+                            aria-label="Pause message"
+                          >
+                            <span className="flex gap-2">
+                              <span className="block h-6 w-[6px] rounded-full bg-white" />
+                              <span className="block h-6 w-[6px] rounded-full bg-white" />
+                            </span>
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={handleResume}
+                            className="grid h-[74px] w-[74px] place-items-center rounded-full bg-gradient-to-b from-[#26201b] to-[#15110f] text-white shadow-[0_16px_28px_rgba(21,17,15,0.2)] transition duration-150 hover:brightness-105 active:scale-95"
+                            aria-label="Resume message"
+                          >
+                            <span className="ml-1 inline-block h-0 w-0 border-b-[12px] border-l-[18px] border-t-[12px] border-b-transparent border-l-white border-t-transparent" />
+                          </button>
+                        )}
                       </div>
 
                       <div className="mt-4 text-center text-[13px] tracking-[0.01em] text-[#181411]/55">
@@ -511,7 +586,10 @@ export default function MessagePage({
                     </div>
 
                     <button
-                      onClick={startRecording}
+                      onClick={() => {
+                        triggerHaptic();
+                        startRecording();
+                      }}
                       className="min-h-[56px] w-full rounded-[18px] bg-gradient-to-b from-[#26201b] to-[#15110f] px-6 py-3.5 text-base font-semibold text-white shadow-[0_18px_30px_rgba(21,17,15,0.18)] transition duration-150 hover:brightness-105 active:scale-[0.98]"
                     >
                       Start recording
@@ -522,7 +600,7 @@ export default function MessagePage({
                 {step === "recording" && (
                   <div className="flex flex-1 flex-col justify-center space-y-8 text-center">
                     <div className="space-y-4">
-                      <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-red-50 text-3xl shadow-[0_12px_30px_rgba(58,42,27,0.08)]">
+                      <div className="mx-auto flex h-20 w-20 items-center justify-center rounded-full bg-red-50 text-3xl shadow-[0_12px_30px_rgba(58,42,27,0.08)] motion-safe:animate-[pulse_1.8s_ease-in-out_infinite]">
                         🎙️
                       </div>
 
@@ -536,6 +614,9 @@ export default function MessagePage({
                         <p className="text-[15px] text-[#6f655e]">
                           Tap below when you’re ready to stop.
                         </p>
+                        <p className="text-[13px] font-medium text-red-500">
+                          {formatTime(recordingElapsed)} recording
+                        </p>
                       </div>
 
                       {senderName ? (
@@ -548,7 +629,10 @@ export default function MessagePage({
                     </div>
 
                     <button
-                      onClick={stopRecording}
+                      onClick={() => {
+                        triggerHaptic();
+                        stopRecording();
+                      }}
                       className="min-h-[56px] w-full rounded-[18px] bg-red-500 px-6 py-3.5 text-base font-semibold text-white shadow-[0_18px_30px_rgba(239,68,68,0.22)] transition duration-150 hover:bg-red-600 active:scale-[0.98]"
                     >
                       Stop recording
@@ -585,19 +669,25 @@ export default function MessagePage({
                     </div>
 
                     <div className="rounded-[24px] border border-white/80 bg-white/65 p-4 shadow-[0_12px_30px_rgba(58,42,27,0.08)] backdrop-blur-md">
-                      <audio controls src={audioUrl} className="w-full" />
+                      <audio key={audioUrl} controls src={audioUrl} className="w-full" />
                     </div>
 
                     <div className="space-y-3">
                       <button
-                        onClick={saveMessage}
+                        onClick={() => {
+                          triggerHaptic();
+                          saveMessage();
+                        }}
                         className="min-h-[56px] w-full rounded-[18px] bg-gradient-to-b from-[#26201b] to-[#15110f] px-6 py-3.5 text-base font-semibold text-white shadow-[0_18px_30px_rgba(21,17,15,0.18)] transition duration-150 hover:brightness-105 active:scale-[0.98]"
                       >
                         Save message
                       </button>
 
                       <button
-                        onClick={startRecording}
+                        onClick={() => {
+                          triggerHaptic();
+                          startRecording();
+                        }}
                         className="min-h-[56px] w-full rounded-[18px] border border-[#181411]/10 bg-white/65 px-6 py-3.5 text-base font-semibold text-[#181411] shadow-[0_8px_18px_rgba(58,42,27,0.05)] transition duration-150 hover:bg-white/80 active:scale-[0.98]"
                       >
                         Re-record
@@ -639,7 +729,10 @@ export default function MessagePage({
                     </div>
 
                     <button
-                      onClick={() => setStep("preplay")}
+                      onClick={() => {
+                        triggerHaptic();
+                        setStep("preplay");
+                      }}
                       className="min-h-[56px] w-full rounded-[18px] bg-gradient-to-b from-[#26201b] to-[#15110f] px-6 py-3.5 text-base font-semibold text-white shadow-[0_18px_30px_rgba(21,17,15,0.18)] transition duration-150 hover:brightness-105 active:scale-[0.98]"
                     >
                       Preview message
