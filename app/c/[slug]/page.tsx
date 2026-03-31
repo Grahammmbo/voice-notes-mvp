@@ -27,15 +27,35 @@ function formatTime(seconds: number) {
   return `${mins}:${secs.toString().padStart(2, "0")}`;
 }
 
-export default function MessagePage({
-  params,
-}: {
-  params: Promise<{ slug: string }>;
-}) {
-  const nextParams = useParams<{ slug: string }>();
+function getSupportedRecordingConfig() {
+  if (typeof window === "undefined" || typeof MediaRecorder === "undefined") {
+    return {
+      mimeType: "",
+      extension: "webm",
+    };
+  }
+
+  const candidates = [
+    { mimeType: "audio/webm;codecs=opus", extension: "webm" },
+    { mimeType: "audio/webm", extension: "webm" },
+    { mimeType: "audio/mp4", extension: "mp4" },
+    { mimeType: "audio/mpeg", extension: "mp3" },
+  ];
+
+  const supported = candidates.find((item) =>
+    MediaRecorder.isTypeSupported?.(item.mimeType),
+  );
+
+  return supported || { mimeType: "", extension: "webm" };
+}
+
+export default function MessagePage() {
+  const params = useParams<{ slug: string | string[] }>();
   const router = useRouter();
 
-  const [slug, setSlug] = useState("");
+  const slugParam = params?.slug;
+  const slug = Array.isArray(slugParam) ? slugParam[0] : slugParam || "";
+
   const [step, setStep] = useState<Step>("loading");
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
@@ -45,33 +65,70 @@ export default function MessagePage({
   const [senderName, setSenderName] = useState("");
   const [note, setNote] = useState("");
 
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
-  const playbackAudioRef = useRef<HTMLAudioElement | null>(null);
-  const recordingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
-    null,
-  );
-
   const [audioReady, setAudioReady] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
-  const [playbackError, setPlaybackError] = useState<string | null>(null);
   const [recordingElapsed, setRecordingElapsed] = useState(0);
 
-  useEffect(() => {
-    const load = async () => {
-      const resolved = await params;
-      const resolvedSlug = resolved?.slug || nextParams?.slug || "";
-      setSlug(Array.isArray(resolvedSlug) ? resolvedSlug[0] : resolvedSlug);
-    };
-    load();
-  }, [params, nextParams]);
+  const [playbackError, setPlaybackError] = useState<string | null>(null);
+  const [recordingError, setRecordingError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  const [isPreparingMic, setIsPreparingMic] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordingStreamRef = useRef<MediaStream | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const playbackAudioRef = useRef<HTMLAudioElement | null>(null);
+  const reviewAudioRef = useRef<HTMLAudioElement | null>(null);
+  const recordingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
+    null,
+  );
+
+  const recordingConfigRef = useRef(getSupportedRecordingConfig());
+
+  const clearRecordingTimer = () => {
+    if (recordingIntervalRef.current) {
+      clearInterval(recordingIntervalRef.current);
+      recordingIntervalRef.current = null;
+    }
+  };
+
+  const cleanupRecordingStream = () => {
+    recordingStreamRef.current?.getTracks().forEach((track) => track.stop());
+    recordingStreamRef.current = null;
+  };
+
+  const revokeLocalAudioUrl = (url: string | null) => {
+    if (url && url.startsWith("blob:")) {
+      URL.revokeObjectURL(url);
+    }
+  };
+
+  const resetPlaybackState = () => {
+    setAudioReady(false);
+    setCurrentTime(0);
+    setDuration(0);
+    setIsPlaying(false);
+    setPlaybackError(null);
+  };
+
+  const triggerHaptic = () => {
+    if (typeof navigator !== "undefined" && "vibrate" in navigator) {
+      navigator.vibrate(12);
+    }
+  };
 
   useEffect(() => {
     if (!slug) return;
 
+    let isMounted = true;
+
     const checkExisting = async () => {
+      setStep("loading");
+
       const { data, error } = await supabase
         .from("messages")
         .select("audio_url, sender_name, note")
@@ -79,6 +136,8 @@ export default function MessagePage({
         .order("created_at", { ascending: false })
         .limit(1)
         .maybeSingle<ExistingMessage>();
+
+      if (!isMounted) return;
 
       if (error) {
         console.error("Error checking existing message:", error);
@@ -89,17 +148,19 @@ export default function MessagePage({
       if (data) {
         setExistingMessage(data);
         setAudioUrl(data.audio_url);
-        setAudioReady(false);
-        setCurrentTime(0);
-        setDuration(0);
-        setPlaybackError(null);
+        resetPlaybackState();
         setStep("preplay");
       } else {
+        setExistingMessage(null);
         setStep("intro");
       }
     };
 
     checkExisting();
+
+    return () => {
+      isMounted = false;
+    };
   }, [slug]);
 
   useEffect(() => {
@@ -154,67 +215,96 @@ export default function MessagePage({
 
   useEffect(() => {
     return () => {
-      if (recordingIntervalRef.current) {
-        clearInterval(recordingIntervalRef.current);
-      }
-
-      if (audioUrl && !existingMessage && audioUrl.startsWith("blob:")) {
-        URL.revokeObjectURL(audioUrl);
-      }
+      clearRecordingTimer();
+      cleanupRecordingStream();
+      revokeLocalAudioUrl(audioUrl);
     };
-  }, [audioUrl, existingMessage]);
-
-  const triggerHaptic = () => {
-    if (typeof navigator !== "undefined" && "vibrate" in navigator) {
-      navigator.vibrate(12);
-    }
-  };
+  }, [audioUrl]);
 
   const startRecording = async () => {
-    try {
-      if (recordingIntervalRef.current) {
-        clearInterval(recordingIntervalRef.current);
-        recordingIntervalRef.current = null;
-      }
+    if (isPreparingMic || isSaving) return;
 
-      if (audioUrl && !existingMessage && audioUrl.startsWith("blob:")) {
-        URL.revokeObjectURL(audioUrl);
+    try {
+      setIsPreparingMic(true);
+      setRecordingError(null);
+      setSaveError(null);
+      setPlaybackError(null);
+
+      clearRecordingTimer();
+      cleanupRecordingStream();
+
+      if (!existingMessage) {
+        revokeLocalAudioUrl(audioUrl);
         setAudioUrl(null);
       }
 
       setAudioBlob(null);
       setRecordingElapsed(0);
-      setPlaybackError(null);
 
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
 
-      const mediaRecorder = new MediaRecorder(stream);
-      mediaRecorderRef.current = mediaRecorder;
+      recordingStreamRef.current = stream;
       chunksRef.current = [];
 
+      const { mimeType } = recordingConfigRef.current;
+
+      const mediaRecorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
+
+      mediaRecorderRef.current = mediaRecorder;
+
       mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
+        if (event.data && event.data.size > 0) {
           chunksRef.current.push(event.data);
         }
       };
 
+      mediaRecorder.onerror = (event) => {
+        console.error("Recorder error:", event);
+        clearRecordingTimer();
+        cleanupRecordingStream();
+        setRecordingError(
+          "Recording ran into a problem. Please try again.",
+        );
+        setStep("intro");
+      };
+
       mediaRecorder.onstop = () => {
-        if (recordingIntervalRef.current) {
-          clearInterval(recordingIntervalRef.current);
-          recordingIntervalRef.current = null;
+        clearRecordingTimer();
+
+        const resolvedMimeType =
+          mediaRecorder.mimeType ||
+          recordingConfigRef.current.mimeType ||
+          "audio/webm";
+
+        const blob = new Blob(chunksRef.current, { type: resolvedMimeType });
+
+        if (!blob.size) {
+          cleanupRecordingStream();
+          setRecordingError(
+            "We couldn’t capture that recording. Please try again.",
+          );
+          setStep("intro");
+          return;
         }
 
-        const blob = new Blob(chunksRef.current, { type: "audio/webm" });
         const localUrl = URL.createObjectURL(blob);
 
         setAudioBlob(blob);
         setAudioUrl(localUrl);
         setStep("review");
 
-        stream.getTracks().forEach((track) => track.stop());
+        cleanupRecordingStream();
       };
 
-      mediaRecorder.start();
+      mediaRecorder.start(250);
 
       recordingIntervalRef.current = setInterval(() => {
         setRecordingElapsed((prev) => prev + 1);
@@ -223,24 +313,56 @@ export default function MessagePage({
       setStep("recording");
     } catch (error) {
       console.error("Mic error:", error);
-      alert("Could not access microphone.");
+      setRecordingError(
+        "Could not access your microphone. Check your browser permissions and try again.",
+      );
+      cleanupRecordingStream();
+      clearRecordingTimer();
+      setStep("intro");
+    } finally {
+      setIsPreparingMic(false);
     }
   };
 
   const stopRecording = () => {
-    mediaRecorderRef.current?.stop();
+    const recorder = mediaRecorderRef.current;
+    if (!recorder) return;
+    if (recorder.state === "inactive") return;
+
+    try {
+      recorder.stop();
+    } catch (error) {
+      console.error("Stop recording error:", error);
+      clearRecordingTimer();
+      cleanupRecordingStream();
+      setRecordingError("Could not stop the recording cleanly. Please try again.");
+      setStep("intro");
+    }
   };
 
   const saveMessage = async () => {
-    if (!audioBlob || !slug) return;
+    if (!audioBlob || !slug || isSaving) return;
 
     try {
-      const filePath = `${slug}-${Date.now()}.webm`;
+      setIsSaving(true);
+      setSaveError(null);
+      setRecordingError(null);
+
+      const { mimeType, extension } = recordingConfigRef.current;
+      const blobExtension =
+        audioBlob.type.includes("mp4")
+          ? "mp4"
+          : audioBlob.type.includes("mpeg")
+            ? "mp3"
+            : extension;
+
+      const filePath = `${slug}-${Date.now()}.${blobExtension}`;
 
       const { error: uploadError } = await supabase.storage
         .from("messages")
         .upload(filePath, audioBlob, {
-          contentType: "audio/webm",
+          contentType: audioBlob.type || mimeType || "audio/webm",
+          upsert: false,
         });
 
       if (uploadError) throw uploadError;
@@ -249,31 +371,34 @@ export default function MessagePage({
         .from("messages")
         .getPublicUrl(filePath);
 
-      const { error: insertError } = await supabase.from("messages").insert({
+      const payload = {
         slug,
-        audio_url: publicUrlData.publicUrl,
-        sender_name: senderName.trim() || null,
-        note: note.trim() || null,
-      });
-
-      if (insertError) throw insertError;
-
-      const saved: ExistingMessage = {
         audio_url: publicUrlData.publicUrl,
         sender_name: senderName.trim() || null,
         note: note.trim() || null,
       };
 
+      const { error: insertError } = await supabase
+        .from("messages")
+        .insert(payload);
+
+      if (insertError) throw insertError;
+
+      const saved: ExistingMessage = {
+        audio_url: publicUrlData.publicUrl,
+        sender_name: payload.sender_name,
+        note: payload.note,
+      };
+
       setExistingMessage(saved);
       setAudioUrl(saved.audio_url);
-      setCurrentTime(0);
-      setDuration(0);
-      setAudioReady(false);
-      setPlaybackError(null);
+      resetPlaybackState();
       setStep("success");
     } catch (error) {
       console.error("Save error:", error);
-      alert("There was a problem saving your message.");
+      setSaveError("There was a problem saving your message. Please try again.");
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -282,6 +407,7 @@ export default function MessagePage({
     if (!audio || !existingMessage?.audio_url) return;
 
     triggerHaptic();
+    setPlaybackError(null);
 
     try {
       if (step === "ended") {
@@ -306,6 +432,7 @@ export default function MessagePage({
     if (!audio) return;
 
     triggerHaptic();
+    setPlaybackError(null);
 
     try {
       await audio.play();
@@ -325,6 +452,7 @@ export default function MessagePage({
     setCurrentTime(0);
     setStep("preplay");
     setIsPlaying(false);
+    setPlaybackError(null);
   };
 
   const handleCreateEchoNote = () => {
@@ -386,6 +514,12 @@ export default function MessagePage({
               EchoNote
             </div>
 
+            {(recordingError || saveError || playbackError) && (
+              <div className="mt-5 rounded-[18px] border border-red-200 bg-red-50/90 px-4 py-3 text-[13px] leading-5 text-red-700 shadow-[0_8px_18px_rgba(239,68,68,0.08)]">
+                {recordingError || saveError || playbackError}
+              </div>
+            )}
+
             {(step === "preplay" || step === "playing" || step === "ended") &&
               existingMessage && (
                 <>
@@ -431,11 +565,6 @@ export default function MessagePage({
                         <div className="text-[12px] text-[#181411]/45">
                           No app required
                         </div>
-                        {playbackError ? (
-                          <p className="max-w-[240px] text-center text-[12px] text-red-600">
-                            {playbackError}
-                          </p>
-                        ) : null}
                       </div>
                     </div>
                   )}
@@ -616,13 +745,15 @@ export default function MessagePage({
                     </div>
 
                     <button
+                      type="button"
                       onClick={() => {
                         triggerHaptic();
                         startRecording();
                       }}
-                      className="min-h-[56px] w-full rounded-[18px] bg-gradient-to-b from-[#26201b] to-[#15110f] px-6 py-3.5 text-base font-semibold text-white shadow-[0_18px_30px_rgba(21,17,15,0.18)] transition duration-150 hover:brightness-105 active:scale-[0.98]"
+                      disabled={isPreparingMic}
+                      className="min-h-[56px] w-full rounded-[18px] bg-gradient-to-b from-[#26201b] to-[#15110f] px-6 py-3.5 text-base font-semibold text-white shadow-[0_18px_30px_rgba(21,17,15,0.18)] transition duration-150 hover:brightness-105 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      Start recording
+                      {isPreparingMic ? "Preparing microphone..." : "Start recording"}
                     </button>
                   </div>
                 )}
@@ -663,6 +794,7 @@ export default function MessagePage({
                     </div>
 
                     <button
+                      type="button"
                       onClick={() => {
                         triggerHaptic();
                         stopRecording();
@@ -707,26 +839,37 @@ export default function MessagePage({
                     </div>
 
                     <div className="rounded-[24px] border border-white/80 bg-white/65 p-4 shadow-[0_12px_30px_rgba(58,42,27,0.08)] backdrop-blur-md">
-                      <audio key={audioUrl} controls src={audioUrl} className="w-full" />
+                      <audio
+                        ref={reviewAudioRef}
+                        key={audioUrl}
+                        controls
+                        src={audioUrl}
+                        className="w-full"
+                      />
                     </div>
 
                     <div className="space-y-3">
                       <button
+                        type="button"
                         onClick={() => {
                           triggerHaptic();
                           saveMessage();
                         }}
-                        className="min-h-[56px] w-full rounded-[18px] bg-gradient-to-b from-[#26201b] to-[#15110f] px-6 py-3.5 text-base font-semibold text-white shadow-[0_18px_30px_rgba(21,17,15,0.18)] transition duration-150 hover:brightness-105 active:scale-[0.98]"
+                        disabled={isSaving}
+                        className="min-h-[56px] w-full rounded-[18px] bg-gradient-to-b from-[#26201b] to-[#15110f] px-6 py-3.5 text-base font-semibold text-white shadow-[0_18px_30px_rgba(21,17,15,0.18)] transition duration-150 hover:brightness-105 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
                       >
-                        Save message
+                        {isSaving ? "Saving..." : "Save message"}
                       </button>
 
                       <button
+                        type="button"
                         onClick={() => {
                           triggerHaptic();
+                          reviewAudioRef.current?.pause();
                           startRecording();
                         }}
-                        className="min-h-[56px] w-full rounded-[18px] border border-[#181411]/10 bg-white/65 px-6 py-3.5 text-base font-semibold text-[#181411] shadow-[0_8px_18px_rgba(58,42,27,0.05)] transition duration-150 hover:bg-white/80 active:scale-[0.98]"
+                        disabled={isSaving || isPreparingMic}
+                        className="min-h-[56px] w-full rounded-[18px] border border-[#181411]/10 bg-white/65 px-6 py-3.5 text-base font-semibold text-[#181411] shadow-[0_8px_18px_rgba(58,42,27,0.05)] transition duration-150 hover:bg-white/80 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         Re-record
                       </button>
@@ -767,6 +910,7 @@ export default function MessagePage({
                     </div>
 
                     <button
+                      type="button"
                       onClick={() => {
                         triggerHaptic();
                         setStep("preplay");
