@@ -43,7 +43,9 @@ function getSupportedRecordingConfig() {
   ];
 
   const supported = candidates.find((item) =>
-    MediaRecorder.isTypeSupported?.(item.mimeType),
+    typeof MediaRecorder.isTypeSupported === "function"
+      ? MediaRecorder.isTypeSupported(item.mimeType)
+      : false,
   );
 
   return supported || { mimeType: "", extension: "webm" };
@@ -71,9 +73,17 @@ export default function MessagePage() {
   const [duration, setDuration] = useState(0);
   const [recordingElapsed, setRecordingElapsed] = useState(0);
 
+  const [reviewAudioReady, setReviewAudioReady] = useState(false);
+  const [reviewIsPlaying, setReviewIsPlaying] = useState(false);
+  const [reviewCurrentTime, setReviewCurrentTime] = useState(0);
+  const [reviewDuration, setReviewDuration] = useState(0);
+
   const [playbackError, setPlaybackError] = useState<string | null>(null);
   const [recordingError, setRecordingError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [reviewPlaybackError, setReviewPlaybackError] = useState<string | null>(
+    null,
+  );
 
   const [isPreparingMic, setIsPreparingMic] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -115,6 +125,14 @@ export default function MessagePage() {
     setPlaybackError(null);
   };
 
+  const resetReviewState = () => {
+    setReviewAudioReady(false);
+    setReviewIsPlaying(false);
+    setReviewCurrentTime(0);
+    setReviewDuration(0);
+    setReviewPlaybackError(null);
+  };
+
   const triggerHaptic = () => {
     if (typeof navigator !== "undefined" && "vibrate" in navigator) {
       navigator.vibrate(12);
@@ -149,6 +167,7 @@ export default function MessagePage() {
         setExistingMessage(data);
         setAudioUrl(data.audio_url);
         resetPlaybackState();
+        resetReviewState();
         setStep("preplay");
       } else {
         setExistingMessage(null);
@@ -214,6 +233,54 @@ export default function MessagePage() {
   }, [existingMessage?.audio_url]);
 
   useEffect(() => {
+    const audio = reviewAudioRef.current;
+    if (!audio || !audioUrl || step !== "review") return;
+
+    const onLoadedMetadata = () => {
+      setReviewDuration(audio.duration || 0);
+      setReviewAudioReady(true);
+    };
+
+    const onTimeUpdate = () => {
+      setReviewCurrentTime(audio.currentTime || 0);
+    };
+
+    const onEnded = () => {
+      setReviewIsPlaying(false);
+      setReviewCurrentTime(audio.duration || 0);
+    };
+
+    const onPlay = () => {
+      setReviewIsPlaying(true);
+      setReviewPlaybackError(null);
+    };
+
+    const onPause = () => {
+      setReviewIsPlaying(false);
+    };
+
+    const onError = () => {
+      setReviewPlaybackError("This preview couldn’t be played.");
+    };
+
+    audio.addEventListener("loadedmetadata", onLoadedMetadata);
+    audio.addEventListener("timeupdate", onTimeUpdate);
+    audio.addEventListener("ended", onEnded);
+    audio.addEventListener("play", onPlay);
+    audio.addEventListener("pause", onPause);
+    audio.addEventListener("error", onError);
+
+    return () => {
+      audio.removeEventListener("loadedmetadata", onLoadedMetadata);
+      audio.removeEventListener("timeupdate", onTimeUpdate);
+      audio.removeEventListener("ended", onEnded);
+      audio.removeEventListener("play", onPlay);
+      audio.removeEventListener("pause", onPause);
+      audio.removeEventListener("error", onError);
+    };
+  }, [audioUrl, step]);
+
+  useEffect(() => {
     return () => {
       clearRecordingTimer();
       cleanupRecordingStream();
@@ -229,9 +296,13 @@ export default function MessagePage() {
       setRecordingError(null);
       setSaveError(null);
       setPlaybackError(null);
+      setReviewPlaybackError(null);
 
       clearRecordingTimer();
       cleanupRecordingStream();
+
+      reviewAudioRef.current?.pause();
+      resetReviewState();
 
       if (!existingMessage) {
         revokeLocalAudioUrl(audioUrl);
@@ -270,9 +341,7 @@ export default function MessagePage() {
         console.error("Recorder error:", event);
         clearRecordingTimer();
         cleanupRecordingStream();
-        setRecordingError(
-          "Recording ran into a problem. Please try again.",
-        );
+        setRecordingError("Recording ran into a problem. Please try again.");
         setStep("intro");
       };
 
@@ -299,6 +368,7 @@ export default function MessagePage() {
 
         setAudioBlob(blob);
         setAudioUrl(localUrl);
+        resetReviewState();
         setStep("review");
 
         cleanupRecordingStream();
@@ -390,9 +460,11 @@ export default function MessagePage() {
         note: payload.note,
       };
 
+      reviewAudioRef.current?.pause();
       setExistingMessage(saved);
       setAudioUrl(saved.audio_url);
       resetPlaybackState();
+      resetReviewState();
       setStep("success");
     } catch (error) {
       console.error("Save error:", error);
@@ -455,6 +527,29 @@ export default function MessagePage() {
     setPlaybackError(null);
   };
 
+  const handleReviewToggle = async () => {
+    const audio = reviewAudioRef.current;
+    if (!audio) return;
+
+    triggerHaptic();
+    setReviewPlaybackError(null);
+
+    try {
+      if (audio.paused) {
+        if (audio.ended) {
+          audio.currentTime = 0;
+          setReviewCurrentTime(0);
+        }
+        await audio.play();
+      } else {
+        audio.pause();
+      }
+    } catch (error) {
+      console.error("Review playback failed:", error);
+      setReviewPlaybackError("Playback was blocked. Tap again to try.");
+    }
+  };
+
   const handleCreateEchoNote = () => {
     triggerHaptic();
     router.push("/create");
@@ -472,6 +567,13 @@ export default function MessagePage() {
   const noteLabel = existingMessage?.note?.trim();
   const progress =
     duration > 0 ? Math.min((currentTime / duration) * 100, 100) : 0;
+  const reviewProgress =
+    reviewDuration > 0
+      ? Math.min((reviewCurrentTime / reviewDuration) * 100, 100)
+      : 0;
+
+  const activeError =
+    recordingError || saveError || playbackError || reviewPlaybackError;
 
   if (step === "loading") {
     return (
@@ -514,11 +616,11 @@ export default function MessagePage() {
               EchoNote
             </div>
 
-            {(recordingError || saveError || playbackError) && (
+            {activeError ? (
               <div className="mt-5 rounded-[18px] border border-red-200 bg-red-50/90 px-4 py-3 text-[13px] leading-5 text-red-700 shadow-[0_8px_18px_rgba(239,68,68,0.08)]">
-                {recordingError || saveError || playbackError}
+                {activeError}
               </div>
-            )}
+            ) : null}
 
             {(step === "preplay" || step === "playing" || step === "ended") &&
               existingMessage && (
@@ -807,21 +909,21 @@ export default function MessagePage() {
                 )}
 
                 {step === "review" && audioUrl && (
-                  <div className="flex flex-1 flex-col justify-center space-y-8">
-                    <div className="space-y-4 text-center">
-                      <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-white/70 text-2xl shadow-[0_12px_30px_rgba(58,42,27,0.08)]">
+                  <div className="flex flex-1 flex-col justify-center space-y-8 text-center">
+                    <div className="space-y-4">
+                      <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-white/70 text-2xl shadow-[0_12px_30px_rgba(58,42,27,0.08)]">
                         🎧
                       </div>
 
                       <div className="space-y-2">
                         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#181411]/45">
-                          One last listen
+                          Take one last listen
                         </p>
                         <h1 className="text-[32px] font-semibold leading-[1.05] tracking-[-0.04em] text-[#181411]">
-                          Review your message
+                          This is what they’ll hear
                         </h1>
-                        <p className="text-[15px] text-[#6f655e]">
-                          Give it one last listen before saving.
+                        <p className="mx-auto max-w-[280px] text-[15px] text-[#6f655e]">
+                          Play it back, then save it when it feels right.
                         </p>
                       </div>
 
@@ -838,14 +940,65 @@ export default function MessagePage() {
                       ) : null}
                     </div>
 
-                    <div className="rounded-[24px] border border-white/80 bg-white/65 p-4 shadow-[0_12px_30px_rgba(58,42,27,0.08)] backdrop-blur-md">
+                    <div className="rounded-[28px] border border-white/80 bg-white/65 px-5 py-6 shadow-[0_12px_30px_rgba(58,42,27,0.08)] backdrop-blur-md">
                       <audio
                         ref={reviewAudioRef}
                         key={audioUrl}
-                        controls
                         src={audioUrl}
-                        className="w-full"
+                        preload="metadata"
+                        className="hidden"
                       />
+
+                      <div className="mb-5 flex h-[104px] items-end justify-center gap-[6px]">
+                        {[26, 46, 70, 50, 82, 58, 34, 76, 42].map(
+                          (height, i) => (
+                            <span
+                              key={i}
+                              className="inline-block w-[6px] origin-bottom rounded-full bg-gradient-to-b from-[#181411]/20 to-[#181411]/70 motion-safe:animate-[pulse_1.1s_ease-in-out_infinite]"
+                              style={{
+                                height,
+                                animationDelay: `${-0.1 * i}s`,
+                                opacity: reviewIsPlaying ? 1 : 0.55,
+                              }}
+                            />
+                          ),
+                        )}
+                      </div>
+
+                      <div className="mx-auto h-2 w-full max-w-[260px] overflow-hidden rounded-full bg-[#181411]/8">
+                        <div
+                          className="h-full rounded-full bg-gradient-to-r from-[#2f2520] to-[#8d786a] transition-all duration-300"
+                          style={{ width: `${reviewProgress}%` }}
+                        />
+                      </div>
+
+                      <div className="mt-6 flex items-center justify-center gap-3">
+                        <button
+                          type="button"
+                          onClick={handleReviewToggle}
+                          className="grid h-[74px] w-[74px] place-items-center rounded-full bg-gradient-to-b from-[#26201b] to-[#15110f] text-white shadow-[0_16px_28px_rgba(21,17,15,0.2)] transition duration-150 hover:brightness-105 active:scale-95"
+                          aria-label={
+                            reviewIsPlaying
+                              ? "Pause review message"
+                              : "Play review message"
+                          }
+                        >
+                          {reviewIsPlaying ? (
+                            <span className="flex gap-2">
+                              <span className="block h-6 w-[6px] rounded-full bg-white" />
+                              <span className="block h-6 w-[6px] rounded-full bg-white" />
+                            </span>
+                          ) : (
+                            <span className="ml-1 inline-block h-0 w-0 border-b-[12px] border-l-[18px] border-t-[12px] border-b-transparent border-l-white border-t-transparent" />
+                          )}
+                        </button>
+                      </div>
+
+                      <div className="mt-4 text-center text-[13px] tracking-[0.01em] text-[#181411]/55">
+                        {reviewAudioReady
+                          ? `${formatTime(reviewCurrentTime)} / ${formatTime(reviewDuration)}`
+                          : "Preparing preview..."}
+                      </div>
                     </div>
 
                     <div className="space-y-3">
@@ -853,6 +1006,7 @@ export default function MessagePage() {
                         type="button"
                         onClick={() => {
                           triggerHaptic();
+                          reviewAudioRef.current?.pause();
                           saveMessage();
                         }}
                         disabled={isSaving}
