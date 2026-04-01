@@ -811,52 +811,86 @@ export default function MessagePage() {
               step === "success") && (
               <>
                 {step === "intro" && (
-                  <div className="flex flex-1 flex-col justify-center space-y-8">
-                    <div className="space-y-4 text-center">
-                      <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-white/70 text-2xl shadow-[0_12px_30px_rgba(58,42,27,0.08)]">
+                  <div className="flex flex-1 flex-col justify-center">
+                    <div className="space-y-6 text-center">
+                      <div className="mx-auto grid h-[84px] w-[84px] place-items-center rounded-full border border-white/80 bg-[radial-gradient(circle_at_30%_30%,rgba(255,255,255,0.98),rgba(255,255,255,0.58))] text-[30px] shadow-[0_18px_40px_rgba(58,42,27,0.10)]">
                         💛
                       </div>
+
                       <div className="space-y-3">
                         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#181411]/45">
-                          Leave a moment behind
+                          Leave something meaningful
                         </p>
-                        <h1 className="text-[32px] font-semibold leading-[1.05] tracking-[-0.04em] text-[#181411]">
-                          Leave a message
+                        <h1 className="mx-auto max-w-[320px] text-[34px] font-semibold leading-[1.02] tracking-[-0.04em] text-[#181411]">
+                          Leave a voice message they can keep
                         </h1>
-                        <p className="mx-auto max-w-[280px] text-[15px] leading-7 text-[#6f655e]">
-                          Record something they can hear the moment they scan
-                          this EchoNote.
+                        <p className="mx-auto max-w-[295px] text-[15px] leading-7 text-[#6f655e]">
+                          Record a private moment they can hear the instant they
+                          scan this EchoNote.
                         </p>
                       </div>
                     </div>
 
-                    <div className="space-y-3">
-                      <input
-                        placeholder="Your name (optional)"
-                        value={senderName}
-                        onChange={(e) => setSenderName(e.target.value)}
-                        className="w-full rounded-[18px] border border-[#181411]/10 bg-white/70 px-4 py-3.5 text-[#181411] placeholder:text-[#181411]/35 outline-none transition focus:border-[#181411]/30"
-                      />
+                    <div className="mt-8 rounded-[28px] border border-white/80 bg-white/65 px-5 py-6 shadow-[0_12px_30px_rgba(58,42,27,0.08)] backdrop-blur-md">
+                      <div className="flex items-center justify-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#181411]/45">
+                        <span className="h-2 w-2 rounded-full bg-gradient-to-b from-[#2f2520] to-[#8d786a] shadow-[0_0_0_4px_rgba(141,120,106,0.08)]" />
+                        No app required
+                      </div>
 
-                      <input
-                        placeholder="Add a short note (optional)"
-                        value={note}
-                        onChange={(e) => setNote(e.target.value)}
-                        className="w-full rounded-[18px] border border-[#181411]/10 bg-white/70 px-4 py-3.5 text-[#181411] placeholder:text-[#181411]/35 outline-none transition focus:border-[#181411]/30"
-                      />
+                      <div className="mt-5 grid grid-cols-3 gap-2">
+                        {[
+                          { label: "Record", value: "Your voice" },
+                          { label: "Save", value: "In seconds" },
+                          { label: "Open", value: "With one scan" },
+                        ].map((item) => (
+                          <div
+                            key={item.label}
+                            className="rounded-[18px] border border-[#181411]/6 bg-white/60 px-3 py-3 text-center"
+                          >
+                            <div className="text-[11px] uppercase tracking-[0.12em] text-[#181411]/40">
+                              {item.label}
+                            </div>
+                            <div className="mt-1 text-[13px] font-semibold leading-5 tracking-[-0.02em] text-[#181411]">
+                              {item.value}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="mt-5 space-y-3">
+                        <input
+                          placeholder="Your name (optional)"
+                          value={senderName}
+                          onChange={(e) => setSenderName(e.target.value)}
+                          className="w-full rounded-[18px] border border-[#181411]/10 bg-white/70 px-4 py-3.5 text-[#181411] placeholder:text-[#181411]/35 outline-none transition focus:border-[#181411]/30"
+                        />
+
+                        <input
+                          placeholder="Add a short note (optional)"
+                          value={note}
+                          onChange={(e) => setNote(e.target.value)}
+                          className="w-full rounded-[18px] border border-[#181411]/10 bg-white/70 px-4 py-3.5 text-[#181411] placeholder:text-[#181411]/35 outline-none transition focus:border-[#181411]/30"
+                        />
+                      </div>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                        triggerHaptic();
-                        startRecording();
-                      }}
-                      disabled={isPreparingMic}
-                      className="min-h-[56px] w-full rounded-[18px] bg-gradient-to-b from-[#26201b] to-[#15110f] px-6 py-3.5 text-base font-semibold text-white shadow-[0_18px_30px_rgba(21,17,15,0.18)] transition duration-150 hover:brightness-105 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {isPreparingMic ? "Preparing microphone..." : "Start recording"}
-                    </button>
+                    <div className="mt-8 grid gap-3">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          triggerHaptic();
+                          startRecording();
+                        }}
+                        disabled={isPreparingMic}
+                        className="min-h-[56px] w-full rounded-[18px] bg-gradient-to-b from-[#26201b] to-[#15110f] px-6 py-3.5 text-base font-semibold text-white shadow-[0_18px_30px_rgba(21,17,15,0.18)] transition duration-150 hover:brightness-105 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {isPreparingMic ? "Preparing microphone..." : "Start recording"}
+                      </button>
+
+                      <p className="text-center text-[13px] text-[#181411]/55">
+                        A private message, opened in one tap
+                      </p>
+                    </div>
                   </div>
                 )}
 
