@@ -57,7 +57,7 @@ const PACKS: Pack[] = [
     price: "$39",
     subtitle: "Built for thoughtful gifting and events.",
     description:
-      "Perfect for holidays, weddings, party favors, or client gifting.",
+      "Perfect for holidays, weddings, thank you cards, party favors, or even client gifting.",
     features: [
       "36 ready-to-use EchoNote Stickers",
       "Better value per card",
