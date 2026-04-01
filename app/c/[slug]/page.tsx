@@ -1032,47 +1032,92 @@ export default function MessagePage() {
                 )}
 
                 {step === "success" && existingMessage && (
-                  <div className="flex flex-1 flex-col justify-center space-y-8 text-center">
-                    <div className="space-y-4">
-                      <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-white/70 text-2xl shadow-[0_12px_30px_rgba(58,42,27,0.08)]">
+                  <div className="flex flex-1 flex-col justify-center text-center">
+                    <div className="space-y-5">
+                      <div className="mx-auto grid h-[84px] w-[84px] place-items-center rounded-full border border-white/80 bg-[radial-gradient(circle_at_30%_30%,rgba(255,255,255,0.98),rgba(255,255,255,0.58))] text-[34px] shadow-[0_18px_40px_rgba(58,42,27,0.10)]">
                         ✨
                       </div>
 
-                      <div className="space-y-2">
+                      <div className="space-y-3">
                         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#181411]/45">
                           Your EchoNote is live
                         </p>
-                        <h1 className="text-[32px] font-semibold leading-[1.05] tracking-[-0.04em] text-[#181411]">
+                        <h1 className="text-[34px] font-semibold leading-[1.02] tracking-[-0.04em] text-[#181411]">
                           It’s ready
                         </h1>
-                        <p className="text-[15px] text-[#6f655e]">
+                        <p className="mx-auto max-w-[290px] text-[15px] leading-7 text-[#6f655e]">
                           They’ll hear your voice the moment they scan it.
                         </p>
                       </div>
-
-                      {existingMessage.sender_name ? (
-                        <p className="text-lg font-semibold text-[#181411]">
-                          From {existingMessage.sender_name}
-                        </p>
-                      ) : null}
-
-                      {existingMessage.note ? (
-                        <p className="mx-auto max-w-[260px] text-base italic text-[#6f655e]">
-                          “{existingMessage.note}”
-                        </p>
-                      ) : null}
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                        triggerHaptic();
-                        setStep("preplay");
-                      }}
-                      className="min-h-[56px] w-full rounded-[18px] bg-gradient-to-b from-[#26201b] to-[#15110f] px-6 py-3.5 text-base font-semibold text-white shadow-[0_18px_30px_rgba(21,17,15,0.18)] transition duration-150 hover:brightness-105 active:scale-[0.98]"
-                    >
-                      Preview message
-                    </button>
+                    <div className="mt-8 rounded-[28px] border border-white/80 bg-white/65 px-5 py-6 shadow-[0_12px_30px_rgba(58,42,27,0.08)] backdrop-blur-md">
+                      <div className="flex items-center justify-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#181411]/45">
+                        <span className="h-2 w-2 rounded-full bg-emerald-500 shadow-[0_0_0_4px_rgba(16,185,129,0.14)]" />
+                        Saved successfully
+                      </div>
+
+                      {(existingMessage.sender_name || existingMessage.note) && (
+                        <div className="mt-5 space-y-3">
+                          {existingMessage.sender_name ? (
+                            <p className="text-[18px] font-semibold tracking-[-0.02em] text-[#181411]">
+                              From {existingMessage.sender_name}
+                            </p>
+                          ) : null}
+
+                          {existingMessage.note ? (
+                            <p className="mx-auto max-w-[260px] text-[15px] italic leading-7 text-[#6f655e]">
+                              “{existingMessage.note}”
+                            </p>
+                          ) : null}
+                        </div>
+                      )}
+
+                      <div className="mt-6 grid grid-cols-3 gap-2 text-left">
+                        {[
+                          { label: "Recorded", value: "Done" },
+                          { label: "Saved", value: "Secure" },
+                          { label: "Ready", value: "To scan" },
+                        ].map((item) => (
+                          <div
+                            key={item.label}
+                            className="rounded-[18px] border border-[#181411]/6 bg-white/60 px-3 py-3 text-center"
+                          >
+                            <div className="text-[11px] uppercase tracking-[0.12em] text-[#181411]/40">
+                              {item.label}
+                            </div>
+                            <div className="mt-1 text-[14px] font-semibold tracking-[-0.02em] text-[#181411]">
+                              {item.value}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="mt-8 grid gap-3">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          triggerHaptic();
+                          setStep("preplay");
+                        }}
+                        className="min-h-[56px] rounded-[18px] bg-gradient-to-b from-[#26201b] to-[#15110f] px-6 py-3.5 text-base font-semibold text-white shadow-[0_18px_30px_rgba(21,17,15,0.18)] transition duration-150 hover:brightness-105 active:scale-[0.98]"
+                      >
+                        Preview message
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleCreateEchoNote}
+                        className="min-h-[56px] rounded-[18px] border border-[#181411]/10 bg-white/65 px-6 py-3.5 text-base font-semibold text-[#181411] shadow-[0_8px_18px_rgba(58,42,27,0.05)] transition duration-150 hover:bg-white/80 active:scale-[0.98]"
+                      >
+                        Create another EchoNote
+                      </button>
+                    </div>
+
+                    <div className="mt-4 text-center text-[13px] text-[#181411]/55">
+                      Made to be opened in one tap
+                    </div>
                   </div>
                 )}
               </>
