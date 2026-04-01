@@ -27,7 +27,7 @@ const PACKS: Pack[] = [
     description:
       "A simple first batch for birthdays, small gifts, surprise notes, or testing your first packaging flow.",
     features: [
-      "12 ready-to-use QR stickers",
+      "12 ready-to-use EchoNote stickers",
       "Easy first order size",
       "Great for personal gifting",
     ],
@@ -43,7 +43,7 @@ const PACKS: Pack[] = [
     description:
       "Ideal for holidays, weddings, party favors, client gifts, or anyone who wants enough inventory to actually use and share.",
     features: [
-      "36 ready-to-use QR stickers",
+      "36 ready-to-use EchoNote stickers",
       "Better value per card",
       "Best for gifting and events",
     ],
@@ -60,7 +60,7 @@ const PACKS: Pack[] = [
     description:
       "The best option for launches, resellers, events, or anyone planning to package and sell EchoNotes more seriously.",
     features: [
-      "100 ready-to-use QR stickers",
+      "100 ready-to-use EchoNote stickers",
       "Lowest cost per card",
       "Best for scaling inventory",
     ],
