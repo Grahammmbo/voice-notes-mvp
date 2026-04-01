@@ -125,7 +125,7 @@ export default function ShopPage() {
 
               <p className="mt-5 max-w-[620px] text-[16px] leading-8 text-[#645a53] sm:text-[17px]">
                 EchoNote stickers let you attach a private voice message to a
-                real object, gift, or moment. They feel personal, premium, and
+                real object, gift, thank you, or moment. They feel more personal, in an
                 instant.
               </p>
 
