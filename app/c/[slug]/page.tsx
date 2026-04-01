@@ -87,6 +87,7 @@ export default function MessagePage() {
 
   const [isPreparingMic, setIsPreparingMic] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isLoaded, setIsLoaded] = useState(false);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordingStreamRef = useRef<MediaStream | null>(null);
@@ -138,6 +139,14 @@ export default function MessagePage() {
       navigator.vibrate(12);
     }
   };
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setIsLoaded(true);
+    }, 80);
+
+    return () => window.clearTimeout(timer);
+  }, []);
 
   useEffect(() => {
     if (!slug) return;
@@ -575,6 +584,9 @@ export default function MessagePage() {
   const activeError =
     recordingError || saveError || playbackError || reviewPlaybackError;
 
+  const primaryButtonClass =
+    "relative min-h-[56px] overflow-hidden rounded-[18px] bg-gradient-to-b from-[#26201b] to-[#15110f] px-6 py-3.5 text-base font-semibold text-white shadow-[0_18px_30px_rgba(21,17,15,0.18)] transition duration-150 hover:brightness-105 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60 before:absolute before:inset-0 before:rounded-[inherit] before:bg-[linear-gradient(180deg,rgba(255,255,255,0.14),transparent_38%)] before:opacity-100 before:content-[''] after:absolute after:inset-x-[18%] after:top-0 after:h-px after:bg-white/25 after:content-['']";
+
   if (step === "loading") {
     return (
       <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.9),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(221,198,173,0.35),transparent_28%),linear-gradient(180deg,#f8f5f0_0%,#f2ece4_100%)] px-6 py-10 text-[#181411]">
@@ -598,11 +610,26 @@ export default function MessagePage() {
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,rgba(255,255,255,0.9),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(221,198,173,0.35),transparent_28%),linear-gradient(180deg,#f8f5f0_0%,#f2ece4_100%)] px-4 py-6 text-[#181411] sm:px-6">
       <div className="mx-auto flex min-h-[calc(100vh-3rem)] max-w-md items-center justify-center">
-        <div className="relative w-full overflow-hidden rounded-[36px] border border-white/70 bg-white/75 shadow-[0_24px_80px_rgba(58,42,27,0.14)] backdrop-blur-xl">
+        <div
+          className={`relative w-full overflow-hidden rounded-[36px] border border-white/70 bg-white/75 shadow-[0_24px_80px_rgba(58,42,27,0.14)] backdrop-blur-xl transition-all duration-700 ease-out ${
+            isLoaded
+              ? "translate-y-0 scale-100 opacity-100"
+              : "translate-y-4 scale-[0.985] opacity-0"
+          }`}
+        >
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_18%,rgba(255,255,255,0.8),transparent_24%),radial-gradient(circle_at_50%_120%,rgba(223,196,169,0.18),transparent_35%)]" />
+          <div
+            className={`pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(255,255,255,0.55),transparent_30%),radial-gradient(circle_at_50%_100%,rgba(255,255,255,0.18),transparent_36%)] transition-opacity duration-1000 ${
+              isLoaded ? "opacity-100" : "opacity-0"
+            }`}
+          />
           <div className="absolute left-1/2 top-0 z-20 h-7 w-32 -translate-x-1/2 rounded-b-[18px] bg-[#181411]" />
 
-          <section className="relative z-10 flex min-h-[780px] flex-col px-6 pb-7 pt-14 sm:px-7">
+          <section
+            className={`relative z-10 flex min-h-[780px] flex-col px-6 pb-7 pt-14 transition-all duration-700 ease-out sm:px-7 ${
+              isLoaded ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0"
+            }`}
+          >
             {existingMessage?.audio_url ? (
               <audio
                 ref={playbackAudioRef}
@@ -646,7 +673,13 @@ export default function MessagePage() {
                       ) : null}
 
                       <div className="mt-10 flex flex-col items-center gap-4">
-                        <div className="relative grid h-[154px] w-[154px] place-items-center rounded-full bg-[radial-gradient(circle_at_30%_30%,rgba(255,255,255,0.94),rgba(255,255,255,0.38))] shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_24px_50px_rgba(90,66,45,0.12)] motion-safe:animate-[pulse_3s_ease-in-out_infinite]">
+                        <div
+                          className={`relative grid h-[154px] w-[154px] place-items-center rounded-full bg-[radial-gradient(circle_at_30%_30%,rgba(255,255,255,0.94),rgba(255,255,255,0.38))] shadow-[inset_0_1px_0_rgba(255,255,255,0.95),0_24px_50px_rgba(90,66,45,0.12)] transition-all duration-700 ${
+                            isLoaded
+                              ? "scale-100 opacity-100 motion-safe:animate-[pulse_3.2s_ease-in-out_infinite]"
+                              : "scale-95 opacity-0"
+                          }`}
+                        >
                           <div className="absolute inset-[10px] rounded-full border border-[#181411]/5" />
                           <button
                             type="button"
@@ -813,7 +846,7 @@ export default function MessagePage() {
                         <button
                           type="button"
                           onClick={handleCreateEchoNote}
-                          className="min-h-[56px] rounded-[18px] bg-gradient-to-b from-[#26201b] to-[#15110f] px-5 text-[16px] font-semibold tracking-[-0.02em] text-white shadow-[0_18px_30px_rgba(21,17,15,0.18)] transition duration-150 hover:brightness-105 active:scale-[0.98]"
+                          className={primaryButtonClass}
                         >
                           Send your own EchoNote
                         </button>
@@ -920,9 +953,11 @@ export default function MessagePage() {
                           startRecording();
                         }}
                         disabled={isPreparingMic}
-                        className="min-h-[56px] w-full rounded-[18px] bg-gradient-to-b from-[#26201b] to-[#15110f] px-6 py-3.5 text-base font-semibold text-white shadow-[0_18px_30px_rgba(21,17,15,0.18)] transition duration-150 hover:brightness-105 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+                        className={`${primaryButtonClass} w-full`}
                       >
-                        {isPreparingMic ? "Preparing microphone..." : "Start recording"}
+                        {isPreparingMic
+                          ? "Preparing microphone..."
+                          : "Start recording"}
                       </button>
 
                       <p className="text-center text-[13px] text-[#181411]/55">
@@ -1082,7 +1117,7 @@ export default function MessagePage() {
                           saveMessage();
                         }}
                         disabled={isSaving}
-                        className="min-h-[56px] w-full rounded-[18px] bg-gradient-to-b from-[#26201b] to-[#15110f] px-6 py-3.5 text-base font-semibold text-white shadow-[0_18px_30px_rgba(21,17,15,0.18)] transition duration-150 hover:brightness-105 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+                        className={`${primaryButtonClass} w-full`}
                       >
                         {isSaving ? "Saving..." : "Save message"}
                       </button>
@@ -1173,7 +1208,7 @@ export default function MessagePage() {
                           triggerHaptic();
                           setStep("preplay");
                         }}
-                        className="min-h-[56px] rounded-[18px] bg-gradient-to-b from-[#26201b] to-[#15110f] px-6 py-3.5 text-base font-semibold text-white shadow-[0_18px_30px_rgba(21,17,15,0.18)] transition duration-150 hover:brightness-105 active:scale-[0.98]"
+                        className={primaryButtonClass}
                       >
                         Preview message
                       </button>
