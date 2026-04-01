@@ -747,24 +747,69 @@ export default function MessagePage() {
                   )}
 
                   {step === "ended" && (
-                    <div className="flex flex-1 flex-col items-center justify-center text-center">
-                      <div className="mb-6 grid h-[78px] w-[78px] place-items-center rounded-full border border-white/80 bg-[radial-gradient(circle_at_30%_30%,rgba(255,255,255,0.95),rgba(255,255,255,0.5))] text-[34px] shadow-[0_12px_30px_rgba(58,42,27,0.08)]">
-                        ✓
+                    <div className="flex flex-1 flex-col justify-center text-center">
+                      <div className="space-y-5">
+                        <div className="mx-auto grid h-[88px] w-[88px] place-items-center rounded-full border border-white/80 bg-[radial-gradient(circle_at_30%_30%,rgba(255,255,255,0.98),rgba(255,255,255,0.58))] text-[36px] shadow-[0_18px_40px_rgba(58,42,27,0.10)]">
+                          ✓
+                        </div>
+
+                        <div className="space-y-3">
+                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#181411]/45">
+                            A moment heard all the way through
+                          </p>
+                          <h1 className="mx-auto max-w-[320px] text-[34px] font-semibold leading-[1.02] tracking-[-0.04em] text-[#181411]">
+                            That was worth keeping
+                          </h1>
+                          <p className="mx-auto max-w-[300px] text-[15px] leading-7 text-[#6f655e]">
+                            A small message can mean everything. Send one of
+                            your own when you’re ready.
+                          </p>
+                        </div>
                       </div>
 
-                      <p className="mb-4 text-[12px] font-semibold uppercase tracking-[0.14em] text-[#181411]/45">
-                        A small moment kept
-                      </p>
+                      <div className="mt-8 rounded-[28px] border border-white/80 bg-white/65 px-5 py-6 shadow-[0_12px_30px_rgba(58,42,27,0.08)] backdrop-blur-md">
+                        <div className="flex items-center justify-center gap-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#181411]/45">
+                          <span className="h-2 w-2 rounded-full bg-gradient-to-b from-[#2f2520] to-[#8d786a] shadow-[0_0_0_4px_rgba(141,120,106,0.08)]" />
+                          EchoNote moment complete
+                        </div>
 
-                      <h1 className="max-w-[290px] text-[32px] font-semibold leading-[1.05] tracking-[-0.04em] sm:text-[34px]">
-                        That was special
-                      </h1>
+                        <div className="mt-6 grid grid-cols-3 gap-2">
+                          {[
+                            { label: "Opened", value: "In one tap" },
+                            { label: "Played", value: "All the way" },
+                            { label: "Ready", value: "To share" },
+                          ].map((item) => (
+                            <div
+                              key={item.label}
+                              className="rounded-[18px] border border-[#181411]/6 bg-white/60 px-3 py-3 text-center"
+                            >
+                              <div className="text-[11px] uppercase tracking-[0.12em] text-[#181411]/40">
+                                {item.label}
+                              </div>
+                              <div className="mt-1 text-[13px] font-semibold leading-5 tracking-[-0.02em] text-[#181411]">
+                                {item.value}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
 
-                      <p className="mt-3 max-w-[300px] text-[15px] tracking-[-0.01em] text-[#6f655e]">
-                        Send a moment like this to someone you care about.
-                      </p>
+                        <div className="mt-5 flex flex-wrap justify-center gap-2">
+                          {[
+                            "No signup required",
+                            "Takes seconds",
+                            "Made to be kept",
+                          ].map((item) => (
+                            <div
+                              key={item}
+                              className="rounded-full border border-[#181411]/6 bg-white/55 px-3 py-2 text-[12px] text-[#181411]/58 backdrop-blur-md"
+                            >
+                              {item}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
 
-                      <div className="mt-8 grid w-full gap-3">
+                      <div className="mt-8 grid gap-3">
                         <button
                           type="button"
                           onClick={handleCreateEchoNote}
@@ -780,25 +825,18 @@ export default function MessagePage() {
                         >
                           Replay message
                         </button>
+
+                        <button
+                          type="button"
+                          onClick={handleOrderStickers}
+                          className="min-h-[56px] rounded-[18px] border border-[#181411]/8 bg-transparent px-5 text-[15px] font-semibold tracking-[-0.02em] text-[#181411]/75 transition duration-150 hover:bg-white/40 active:scale-[0.98]"
+                        >
+                          Order EchoNote Stickers
+                        </button>
                       </div>
 
-                      <div className="mt-3 text-center text-[13px] text-[#181411]/55">
+                      <div className="mt-4 text-center text-[13px] text-[#181411]/55">
                         Your first one is free
-                      </div>
-
-                      <div className="mt-4 flex flex-wrap justify-center gap-2">
-                        {[
-                          "No signup required",
-                          "Takes seconds",
-                          "Order stickers later",
-                        ].map((item) => (
-                          <div
-                            key={item}
-                            className="rounded-full border border-[#181411]/6 bg-white/55 px-3 py-2 text-[12px] text-[#181411]/58 backdrop-blur-md"
-                          >
-                            {item}
-                          </div>
-                        ))}
                       </div>
                     </div>
                   )}
@@ -1159,18 +1197,9 @@ export default function MessagePage() {
 
             <div className="mt-auto flex flex-col items-center gap-2 pb-1 text-center">
               {step === "ended" ? (
-                <>
-                  <button
-                    type="button"
-                    onClick={handleOrderStickers}
-                    className="text-[13px] font-medium text-[#181411]/60 underline underline-offset-4"
-                  >
-                    Order EchoNote Stickers
-                  </button>
-                  <p className="text-[12px] text-[#181411]/38">
-                    Made to be kept
-                  </p>
-                </>
+                <p className="text-[12px] text-[#181411]/38">
+                  Made to be kept
+                </p>
               ) : (
                 <>
                   <p className="text-[13px] text-[#181411]/55">
