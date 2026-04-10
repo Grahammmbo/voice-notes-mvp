@@ -20,6 +20,9 @@ type ExistingMessage = {
   note: string | null;
 };
 
+const MAX_RECORDING_SECONDS = 120;
+const MAX_AUDIO_FILE_BYTES = 3_000_000;
+
 function formatTime(seconds: number) {
   if (!Number.isFinite(seconds) || seconds < 0) return "0:00";
   const mins = Math.floor(seconds / 60);
@@ -97,6 +100,7 @@ export default function MessagePage() {
   const recordingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(
     null,
   );
+  const didAutoStopRef = useRef(false);
 
   const recordingConfigRef = useRef(getSupportedRecordingConfig());
 
@@ -306,6 +310,7 @@ export default function MessagePage() {
       setSaveError(null);
       setPlaybackError(null);
       setReviewPlaybackError(null);
+      didAutoStopRef.current = false;
 
       clearRecordingTimer();
       cleanupRecordingStream();
@@ -373,6 +378,15 @@ export default function MessagePage() {
           return;
         }
 
+        if (blob.size > MAX_AUDIO_FILE_BYTES) {
+          cleanupRecordingStream();
+          setRecordingError(
+            "That recording is too large. Please keep it under 120 seconds.",
+          );
+          setStep("intro");
+          return;
+        }
+
         const localUrl = URL.createObjectURL(blob);
 
         setAudioBlob(blob);
@@ -386,7 +400,34 @@ export default function MessagePage() {
       mediaRecorder.start(250);
 
       recordingIntervalRef.current = setInterval(() => {
-        setRecordingElapsed((prev) => prev + 1);
+        setRecordingElapsed((prev) => {
+          const next = prev + 1;
+
+          if (next >= MAX_RECORDING_SECONDS && !didAutoStopRef.current) {
+            didAutoStopRef.current = true;
+
+            window.setTimeout(() => {
+              const recorder = mediaRecorderRef.current;
+              if (recorder && recorder.state !== "inactive") {
+                try {
+                  recorder.stop();
+                } catch (error) {
+                  console.error("Auto-stop error:", error);
+                  clearRecordingTimer();
+                  cleanupRecordingStream();
+                  setRecordingError(
+                    "Could not stop the recording cleanly. Please try again.",
+                  );
+                  setStep("intro");
+                }
+              }
+            }, 0);
+
+            return MAX_RECORDING_SECONDS;
+          }
+
+          return next;
+        });
       }, 1000);
 
       setStep("recording");
@@ -426,6 +467,10 @@ export default function MessagePage() {
       setIsSaving(true);
       setSaveError(null);
       setRecordingError(null);
+
+      if (audioBlob.size > MAX_AUDIO_FILE_BYTES) {
+        throw new Error("Recording too large");
+      }
 
       const { mimeType, extension } = recordingConfigRef.current;
       const blobExtension =
@@ -580,6 +625,15 @@ export default function MessagePage() {
     reviewDuration > 0
       ? Math.min((reviewCurrentTime / reviewDuration) * 100, 100)
       : 0;
+
+  const recordingProgress = Math.min(
+    (recordingElapsed / MAX_RECORDING_SECONDS) * 100,
+    100,
+  );
+  const recordingRemaining = Math.max(
+    MAX_RECORDING_SECONDS - recordingElapsed,
+    0,
+  );
 
   const activeError =
     recordingError || saveError || playbackError || reviewPlaybackError;
@@ -961,7 +1015,7 @@ export default function MessagePage() {
                       </button>
 
                       <p className="text-center text-[13px] text-[#181411]/55">
-                        A private message, opened in one tap
+                        Up to {MAX_RECORDING_SECONDS} seconds
                       </p>
                     </div>
                   </div>
@@ -982,11 +1036,21 @@ export default function MessagePage() {
                           Recording…
                         </h1>
                         <p className="text-[15px] text-[#6f655e]">
-                          Tap below when you’re ready to stop.
+                          It will stop automatically at {formatTime(MAX_RECORDING_SECONDS)}.
                         </p>
                         <p className="text-[13px] font-medium text-red-500">
-                          {formatTime(recordingElapsed)} recording
+                          {formatTime(recordingElapsed)} / {formatTime(MAX_RECORDING_SECONDS)}
                         </p>
+                        <p className="text-[12px] text-[#181411]/50">
+                          {recordingRemaining}s remaining
+                        </p>
+                      </div>
+
+                      <div className="mx-auto h-2 w-full max-w-[260px] overflow-hidden rounded-full bg-[#181411]/8">
+                        <div
+                          className="h-full rounded-full bg-gradient-to-r from-red-400 to-red-600 transition-all duration-300"
+                          style={{ width: `${recordingProgress}%` }}
+                        />
                       </div>
 
                       {senderName ? (
