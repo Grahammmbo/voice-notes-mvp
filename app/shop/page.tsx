@@ -63,7 +63,13 @@ export default function ShopPage() {
       window.location.href = data.url;
     } catch (err) {
       console.error("Checkout error:", err);
-      alert("Checkout failed. Please try again.");
+
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Something went wrong, please try again.";
+
+      alert(message);
       setLoading(null);
     }
   };
@@ -144,7 +150,9 @@ export default function ShopPage() {
         <div className="border border-zinc-800 rounded-2xl p-5 bg-zinc-950 text-center space-y-3">
           <p className="text-sm text-gray-300">No app required</p>
           <p className="text-sm text-gray-300">Works on any phone</p>
-          <p className="text-sm text-gray-300">Takes less than 30 seconds to create</p>
+          <p className="text-sm text-gray-300">
+            Takes less than 30 seconds to create
+          </p>
         </div>
       </section>
 
