@@ -45,7 +45,19 @@ export async function POST(req: NextRequest) {
   try {
     if (event.type === "checkout.session.completed") {
       const session = event.data.object as Stripe.Checkout.Session;
+
       const customerDetails = session.customer_details;
+      const shippingDetails = (session as any).shipping_details;
+      const shippingAddress = shippingDetails?.address;
+      const customerAddress = customerDetails?.address;
+
+      const line1 = shippingAddress?.line1 ?? customerAddress?.line1 ?? null;
+      const line2 = shippingAddress?.line2 ?? customerAddress?.line2 ?? null;
+      const city = shippingAddress?.city ?? customerAddress?.city ?? null;
+      const state = shippingAddress?.state ?? customerAddress?.state ?? null;
+      const postalCode =
+        shippingAddress?.postal_code ?? customerAddress?.postal_code ?? null;
+      const country = shippingAddress?.country ?? customerAddress?.country ?? null;
 
       const orderPayload = {
         stripe_session_id: session.id,
@@ -56,6 +68,7 @@ export async function POST(req: NextRequest) {
 
         customer_email: customerDetails?.email ?? null,
         customer_name: customerDetails?.name ?? null,
+        shipping_name: shippingDetails?.name ?? customerDetails?.name ?? null,
 
         pack_id: session.metadata?.pack_id ?? null,
         pack_name: session.metadata?.pack_name ?? null,
@@ -63,17 +76,22 @@ export async function POST(req: NextRequest) {
           ? Number(session.metadata.sticker_count)
           : null,
 
+        amount_total: session.amount_total ?? null,
+        amount_subtotal: session.amount_subtotal ?? null,
         unit_amount: session.amount_total ?? null,
-        payment_status: session.payment_status ?? null,
         currency: session.currency ?? null,
+        payment_status: session.payment_status ?? null,
 
-        shipping_name: customerDetails?.name ?? null,
-        shipping_line1: customerDetails?.address?.line1 ?? null,
-        shipping_line2: customerDetails?.address?.line2 ?? null,
-        shipping_city: customerDetails?.address?.city ?? null,
-        shipping_state: customerDetails?.address?.state ?? null,
-        shipping_postal_code: customerDetails?.address?.postal_code ?? null,
-        shipping_country: customerDetails?.address?.country ?? null,
+        shipping_line1: line1,
+        shipping_line2: line2,
+        shipping_city: city,
+        shipping_state: state,
+        shipping_postal_code: postalCode,
+        shipping_country: country,
+
+        // keep legacy columns in sync too
+        shipping_address_line1: line1,
+        shipping_address_line2: line2,
       };
 
       console.log("Saving order to Supabase:", orderPayload);
