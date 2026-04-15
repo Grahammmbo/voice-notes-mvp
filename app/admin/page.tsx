@@ -128,8 +128,8 @@ export default async function AdminPage() {
                           <span
                             className={`rounded-full px-3 py-1 text-xs font-medium ${
                               order.fulfillment_status === "shipped"
-                                ? "bg-green-500/15 text-green-300 border border-green-500/30"
-                                : "bg-yellow-500/15 text-yellow-300 border border-yellow-500/30"
+                                ? "border border-green-500/30 bg-green-500/15 text-green-300"
+                                : "border border-yellow-500/30 bg-yellow-500/15 text-yellow-300"
                             }`}
                           >
                             {order.fulfillment_status || "paid"}
