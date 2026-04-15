@@ -1,6 +1,8 @@
 import { createClient } from "@supabase/supabase-js";
 import AdminGate from "../components/AdminGate";
 
+export const dynamic = "force-dynamic";
+
 function getEnv(name: string): string {
   const value = process.env[name];
   if (!value) {
