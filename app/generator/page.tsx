@@ -1,176 +1,110 @@
-import { createClient } from "@supabase/supabase-js";
-import { revalidatePath } from "next/cache";
+"use client";
+
+import { useState } from "react";
 import AdminGate from "../components/AdminGate";
 
-export const dynamic = "force-dynamic";
+export default function GeneratorPage() {
+  const [count, setCount] = useState(48);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-function getEnv(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    throw new Error(`Missing ${name}`);
-  }
-  return value;
-}
+  const handleGenerate = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setError(null);
+    setIsSubmitting(true);
 
-const supabase = createClient(
-  getEnv("NEXT_PUBLIC_SUPABASE_URL"),
-  getEnv("SUPABASE_SERVICE_ROLE_KEY")
-);
+    try {
+      const res = await fetch("/api/generator/pdf", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ count }),
+      });
 
-type QrCodeRow = {
-  id: string;
-  slug: string;
-  created_at: string;
-};
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error || "Failed to generate QR PDF.");
+      }
 
-function randomSlug(length = 8) {
-  const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
-  let result = "";
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
 
-  for (let i = 0; i < length; i += 1) {
-    result += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
+      const disposition = res.headers.get("Content-Disposition");
+      const filenameMatch = disposition?.match(/filename="(.+)"/);
+      const filename = filenameMatch?.[1] || "echonote-qr-batch.pdf";
 
-  return result;
-}
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
 
-async function generateUniqueSlugs(count: number) {
-  const slugs = new Set<string>();
-  let attempts = 0;
-  const maxAttempts = count * 30;
-
-  while (slugs.size < count && attempts < maxAttempts) {
-    slugs.add(randomSlug(8));
-    attempts += 1;
-  }
-
-  if (slugs.size < count) {
-    throw new Error("Could not generate enough unique slugs.");
-  }
-
-  return Array.from(slugs);
-}
-
-async function createSlugBatch(formData: FormData) {
-  "use server";
-
-  const rawCount = formData.get("count")?.toString() ?? "0";
-  const count = Number(rawCount);
-
-  if (!Number.isInteger(count) || count <= 0 || count > 500) {
-    throw new Error("Enter a batch size between 1 and 500.");
-  }
-
-  const newSlugs = await generateUniqueSlugs(count);
-
-  const rows = newSlugs.map((slug) => ({
-    slug,
-  }));
-
-  const { error } = await supabase.from("qr_codes").insert(rows);
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  revalidatePath("/inventory");
-  revalidatePath("/generator");
-}
-
-export default async function GeneratorPage() {
-  const { data: recentRows, error } = await supabase
-    .from("qr_codes")
-    .select("id, slug, created_at")
-    .order("created_at", { ascending: false })
-    .limit(25);
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  const rows = (recentRows ?? []) as QrCodeRow[];
+      window.location.href = "/inventory";
+    } catch (err) {
+      console.error(err);
+      setError(
+        err instanceof Error ? err.message : "Failed to generate QR PDF."
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
 
   return (
     <AdminGate>
       <main className="min-h-screen bg-black px-4 py-8 text-white">
-        <div className="mx-auto max-w-4xl">
+        <div className="mx-auto max-w-3xl">
           <div className="mb-8">
-            <h1 className="text-3xl font-bold">Slug Generator</h1>
+            <h1 className="text-3xl font-bold">QR Sticker Generator</h1>
             <p className="mt-2 text-sm text-zinc-400">
-              Create new EchoNote QR slugs and send them into inventory.
+              Create new slugs and download a printable 1&quot; × 1&quot; QR
+              sticker sheet PDF.
             </p>
           </div>
 
-          <div className="mb-8 rounded-2xl border border-zinc-800 bg-zinc-950 p-5">
-            <h2 className="text-lg font-semibold">Create New Batch</h2>
-            <p className="mt-2 text-sm text-zinc-400">
-              Enter how many new slugs you want to generate.
-            </p>
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-6">
+            <form onSubmit={handleGenerate} className="space-y-5">
+              <div>
+                <label
+                  htmlFor="count"
+                  className="mb-2 block text-sm font-medium text-zinc-300"
+                >
+                  Number of QR stickers to generate
+                </label>
+                <input
+                  id="count"
+                  type="number"
+                  min={1}
+                  max={500}
+                  value={count}
+                  onChange={(e) => setCount(Number(e.target.value))}
+                  className="w-full rounded-xl border border-zinc-700 bg-black px-4 py-3 text-white outline-none"
+                />
+                <p className="mt-2 text-xs text-zinc-500">
+                  48 labels fills one full sheet. Larger batches create
+                  multiple pages automatically.
+                </p>
+              </div>
 
-            <form
-              action={createSlugBatch}
-              className="mt-4 flex flex-col gap-3 sm:flex-row"
-            >
-              <input
-                type="number"
-                name="count"
-                min={1}
-                max={500}
-                defaultValue={25}
-                className="w-full rounded-xl border border-zinc-700 bg-black px-4 py-3 text-sm text-white outline-none"
-              />
+              {error ? (
+                <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                  {error}
+                </div>
+              ) : null}
+
               <button
                 type="submit"
-                className="rounded-xl bg-white px-5 py-3 text-sm font-semibold text-black hover:opacity-90"
+                disabled={isSubmitting}
+                className="w-full rounded-xl bg-white px-4 py-3 font-semibold text-black disabled:cursor-not-allowed disabled:opacity-60"
               >
-                Generate Slugs
+                {isSubmitting
+                  ? "Generating QR PDF..."
+                  : "Generate Slugs + Download PDF"}
               </button>
             </form>
-
-            <p className="mt-3 text-xs text-zinc-500">
-              Recommended small test batch: 10–25. Max per batch: 500.
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-950 p-5">
-            <div className="mb-4 flex items-center justify-between gap-4">
-              <h2 className="text-lg font-semibold">Most Recent Slugs</h2>
-              <a
-                href="/inventory"
-                className="text-sm text-zinc-300 underline underline-offset-4"
-              >
-                View full inventory
-              </a>
-            </div>
-
-            {rows.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="min-w-full text-left text-sm">
-                  <thead className="text-zinc-400">
-                    <tr className="border-b border-zinc-800">
-                      <th className="px-3 py-3">Slug</th>
-                      <th className="px-3 py-3">Created</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {rows.map((row) => (
-                      <tr key={row.id} className="border-b border-zinc-900">
-                        <td className="px-3 py-3 font-mono text-white">
-                          {row.slug}
-                        </td>
-                        <td className="px-3 py-3 text-zinc-300">
-                          {row.created_at
-                            ? new Date(row.created_at).toLocaleString()
-                            : "Unknown"}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="text-sm text-zinc-400">No slugs found.</div>
-            )}
           </div>
         </div>
       </main>
