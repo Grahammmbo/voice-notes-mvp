@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { revalidatePath } from "next/cache";
 import AdminGate from "../components/AdminGate";
 
 export const dynamic = "force-dynamic";
@@ -38,6 +39,8 @@ async function markShipped(formData: FormData) {
   if (error) {
     throw new Error(error.message);
   }
+
+  revalidatePath("/admin");
 }
 
 async function markPending(formData: FormData) {
@@ -61,6 +64,8 @@ async function markPending(formData: FormData) {
   if (error) {
     throw new Error(error.message);
   }
+
+  revalidatePath("/admin");
 }
 
 export default async function AdminPage() {
