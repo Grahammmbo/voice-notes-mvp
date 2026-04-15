@@ -1,15 +1,32 @@
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
-import { supabaseAdmin } from "../../../lib/supabase-admin";
+import { createClient } from "@supabase/supabase-js";
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY as string);
+function getEnv(name: string): string {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`Missing ${name}`);
+  }
+  return value;
+}
+
+const stripeSecretKey = getEnv("STRIPE_SECRET_KEY");
+const stripeWebhookSecret = getEnv("STRIPE_WEBHOOK_SECRET");
+const supabaseUrl = getEnv("NEXT_PUBLIC_SUPABASE_URL");
+const supabaseServiceRoleKey = getEnv("SUPABASE_SERVICE_ROLE_KEY");
+
+const stripe = new Stripe(stripeSecretKey);
+const supabase = createClient(supabaseUrl, supabaseServiceRoleKey);
 
 export async function POST(req: NextRequest) {
   const body = await req.text();
   const signature = req.headers.get("stripe-signature");
 
   if (!signature) {
-    return new NextResponse("Missing stripe-signature header", { status: 400 });
+    return NextResponse.json(
+      { error: "Missing stripe signature" },
+      { status: 400 }
+    );
   }
 
   let event: Stripe.Event;
@@ -18,62 +35,71 @@ export async function POST(req: NextRequest) {
     event = stripe.webhooks.constructEvent(
       body,
       signature,
-      process.env.STRIPE_WEBHOOK_SECRET as string
+      stripeWebhookSecret
     );
-  } catch (err: any) {
-    console.error("❌ Webhook signature verification failed:", err.message);
-    return new NextResponse(`Webhook Error: ${err.message}`, { status: 400 });
+  } catch (error) {
+    console.error("Webhook signature verification failed:", error);
+    return NextResponse.json({ error: "Invalid signature" }, { status: 400 });
   }
 
-  console.log("🔔 Webhook received:", event.type);
-
-  switch (event.type) {
-    case "checkout.session.completed": {
+  try {
+    if (event.type === "checkout.session.completed") {
       const session = event.data.object as Stripe.Checkout.Session;
+      const customerDetails = session.customer_details;
 
-      console.log("✅ Checkout session completed:", session.id);
-      console.log("Customer email:", session.customer_details?.email);
-      console.log("Pack ID:", session.metadata?.packId);
-      console.log("Pack name:", session.metadata?.packName);
-      console.log("Sticker count:", session.metadata?.stickerCount);
-      console.log("Unit amount:", session.metadata?.unitAmount);
-      console.log("Amount total:", session.amount_total);
-      console.log("Payment status:", session.payment_status);
-
-      const order = {
+      const orderPayload = {
         stripe_session_id: session.id,
         stripe_payment_intent_id:
           typeof session.payment_intent === "string"
             ? session.payment_intent
-            : session.payment_intent?.id ?? null,
-        customer_email: session.customer_details?.email ?? null,
-        pack_id: session.metadata?.packId ?? "unknown",
-        pack_name: session.metadata?.packName ?? "Unknown Pack",
-        sticker_count: Number(session.metadata?.stickerCount ?? 0),
-        unit_amount: Number(session.metadata?.unitAmount ?? 0),
-        amount_total: session.amount_total ?? 0,
-        payment_status: session.payment_status ?? "unpaid",
+            : null,
+
+        customer_email: customerDetails?.email ?? null,
+        customer_name: customerDetails?.name ?? null,
+
+        pack_id: session.metadata?.pack_id ?? null,
+        pack_name: session.metadata?.pack_name ?? null,
+        sticker_count: session.metadata?.sticker_count
+          ? Number(session.metadata.sticker_count)
+          : null,
+
+        unit_amount: session.amount_total ?? null,
+        payment_status: session.payment_status ?? null,
+        currency: session.currency ?? null,
+
+        shipping_name: customerDetails?.name ?? null,
+        shipping_line1: customerDetails?.address?.line1 ?? null,
+        shipping_line2: customerDetails?.address?.line2 ?? null,
+        shipping_city: customerDetails?.address?.city ?? null,
+        shipping_state: customerDetails?.address?.state ?? null,
+        shipping_postal_code: customerDetails?.address?.postal_code ?? null,
+        shipping_country: customerDetails?.address?.country ?? null,
       };
 
-      console.log("🧾 Order payload:", order);
+      console.log("Saving order to Supabase:", orderPayload);
 
-      const { data, error } = await supabaseAdmin
-        .from("orders")
-        .upsert(order, { onConflict: "stripe_session_id" })
-        .select();
+      const { error } = await supabase.from("orders").insert([orderPayload]);
 
       if (error) {
-        console.error("❌ Failed to save order:", error);
-        return new NextResponse("Failed to save order", { status: 500 });
+        console.error("Supabase insert error:", error);
+        return NextResponse.json(
+          {
+            error: "Failed to save order",
+            details: error.message,
+          },
+          { status: 500 }
+        );
       }
 
-      console.log("✅ Order saved to Supabase:", data);
-      break;
+      console.log("Order saved successfully:", orderPayload);
     }
 
-    default:
-      console.log("ℹ️ Unhandled event type:", event.type);
+    return NextResponse.json({ received: true }, { status: 200 });
+  } catch (error) {
+    console.error("Webhook handler error:", error);
+    return NextResponse.json(
+      { error: "Webhook handler failed" },
+      { status: 500 }
+    );
   }
-
-  return NextResponse.json({ received: true });
 }
