@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabase";
 import AdminGate from "../components/AdminGate";
+
 type QrCodeRow = {
   id: string;
   slug: string;
@@ -21,7 +22,9 @@ export default function InventoryPage() {
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"all" | "used" | "unused">("all");
 
-  const baseUrl = "https://voice-notes-v85v6ik4c-echo-note.vercel.app";
+  // ✅ Uses your actual domain automatically
+  const baseUrl =
+    process.env.NEXT_PUBLIC_SITE_URL || window.location.origin;
 
   useEffect(() => {
     const loadInventory = async () => {

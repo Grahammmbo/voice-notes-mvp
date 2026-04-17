@@ -23,8 +23,14 @@ export default function GeneratorPage() {
       });
 
       if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        throw new Error(data?.error || "Failed to generate QR PDF.");
+        const text = await res.text();
+
+        try {
+          const data = JSON.parse(text);
+          throw new Error(data?.error || "Failed to generate QR PDF.");
+        } catch {
+          throw new Error(text || "Failed to generate QR PDF.");
+        }
       }
 
       const blob = await res.blob();
@@ -44,7 +50,7 @@ export default function GeneratorPage() {
 
       window.location.href = "/inventory";
     } catch (err) {
-      console.error(err);
+      console.error("Generator error:", err);
       setError(
         err instanceof Error ? err.message : "Failed to generate QR PDF."
       );
@@ -90,7 +96,7 @@ export default function GeneratorPage() {
               </div>
 
               {error ? (
-                <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
+                <div className="whitespace-pre-wrap rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
                   {error}
                 </div>
               ) : null}
